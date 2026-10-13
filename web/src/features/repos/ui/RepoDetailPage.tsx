@@ -124,12 +124,13 @@ export function RepoDetailPage({ relayUrl }: { relayUrl: string }) {
   const owner = repo?.owner ?? "";
   const repoName = repo?.id ?? "";
   const browseOwner = showMockRepo ? "" : owner;
+  const [treePath, setTreePath] = useState("");
 
   const {
     data: fetchedTreeEntries,
     isLoading: isTreeLoading,
     error: treeError,
-  } = useGitTree(relayUrl, browseOwner, repoName, defaultRef);
+  } = useGitTree(relayUrl, browseOwner, repoName, defaultRef, treePath);
   const {
     data: fetchedCommits,
     isLoading: areCommitsLoading,
@@ -235,6 +236,8 @@ export function RepoDetailPage({ relayUrl }: { relayUrl: string }) {
           readme={readme}
           readmeLoading={readmeLoading}
           preview={showMockRepo}
+          treePath={treePath}
+          onOpenDirectory={showMockRepo ? undefined : setTreePath}
         />
 
         {/* Clone URLs */}

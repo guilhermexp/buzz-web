@@ -15,7 +15,7 @@ if (typeof (globalThis as Record<string, unknown>).Buffer === "undefined") {
 }
 
 import LightningFS from "@isomorphic-git/lightning-fs";
-import { clone, fetch, log, readBlob, readTree, resolveRef } from "isomorphic-git";
+import { clone, fetch, log, readBlob, readTree, resolveRef, writeRef } from "isomorphic-git";
 import http from "isomorphic-git/http/web";
 import { relayHttpOrigin } from "@/shared/config/runtime-config";
 import { makeNip98AuthHeader } from "@/shared/lib/nip98";
@@ -31,7 +31,8 @@ function relayCacheKey(relayUrl: string): string {
 
 /** Get a repo-specific LightningFS instance backed by IndexedDB. */
 export function getFs(relayUrl: string, owner: string, repoName: string): LightningFS {
-  return new LightningFS(`buzz-git-${relayCacheKey(relayUrl)}-${owner}-${repoName}`);
+  // `-h` = full-history store (older shallow stores are not reused).
+  return new LightningFS(`buzz-git-${relayCacheKey(relayUrl)}-h-${owner}-${repoName}`);
 }
 
 /** Working directory inside the virtual FS. */
@@ -63,8 +64,9 @@ async function authHeaders(
 }
 
 /**
- * Ensure a shallow clone exists in IndexedDB. If it already exists, fetch
- * the latest for the given ref.
+ * Ensure a single-branch clone (full history, so the commit graph is real)
+ * exists in IndexedDB. If it already exists, fetch the latest for the ref and
+ * fast-forward the local browse branch to it.
  */
 export async function ensureClone(
   relayUrl: string,
@@ -87,16 +89,18 @@ export async function ensureClone(
 
   if (exists) {
     try {
-      await fetch({
+      const result = await fetch({
         fs,
         http,
         dir,
         url,
         ref,
-        depth: 1,
         singleBranch: true,
         headers,
       });
+      if (result.fetchHead) {
+        await writeRef({ fs, dir, ref: `refs/heads/${ref}`, value: result.fetchHead, force: true });
+      }
     } catch {
       // fetch may fail if ref hasn't changed — that's fine
     }
@@ -107,7 +111,6 @@ export async function ensureClone(
       dir,
       url,
       ref,
-      depth: 1,
       singleBranch: true,
       noTags: true,
       headers,
@@ -400,6 +403,7 @@ export async function resolveHtmlAssets(
 export interface CommitInfo {
   oid: string;
   message: string;
+  parents: string[];
   author: {
     name: string;
     email: string;
@@ -412,12 +416,13 @@ export async function getCommitLog(
   fs: LightningFS,
   dir: string,
   ref: string,
-  depth = 20,
+  depth = 50,
 ): Promise<CommitInfo[]> {
   const commits = await log({ fs, dir, ref, depth });
   return commits.map((c) => ({
     oid: c.oid,
     message: c.commit.message,
+    parents: c.commit.parent,
     author: {
       name: c.commit.author.name,
       email: c.commit.author.email,
