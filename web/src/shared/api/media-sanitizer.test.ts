@@ -38,6 +38,41 @@ describe("prepareAttachmentUpload", () => {
     ).rejects.toThrow("This media format isn't supported for upload.");
   });
 
+  it("passes recorder voice-note WAV through unchanged and rejects metadata-bearing WAV", async () => {
+    const riffChunk = (kind: string, payload: number[]) => {
+      const output = new Uint8Array(8 + payload.length);
+      output.set(ascii(kind), 0);
+      new DataView(output.buffer).setUint32(4, payload.length, true);
+      output.set(payload, 8);
+      return output;
+    };
+    const wav = (chunks: Uint8Array[]) => {
+      const body = concat([new Uint8Array(ascii("WAVE")), ...chunks]);
+      const header = new Uint8Array(8);
+      header.set(ascii("RIFF"), 0);
+      new DataView(header.buffer).setUint32(4, body.byteLength, true);
+      return concat([header, body]);
+    };
+    const format = riffChunk("fmt ", new Array(16).fill(1));
+    const samples = riffChunk("data", [0, 0, 1, 0]);
+    const clean = new Uint8Array(wav([format, samples]));
+    const prepared = await prepareAttachmentUpload(
+      new File([clean], "voice-note-1700000000000.wav", { type: "audio/wav" }),
+    );
+    expect(prepared.mimeType).toBe("audio/wav");
+    expect(new Uint8Array(prepared.bytes)).toEqual(clean);
+
+    const tagged = new Uint8Array(
+      wav([format, riffChunk("LIST", [...ascii("INFOISFT"), 2, 0, 0, 0, 65, 0]), samples]),
+    );
+    await expect(
+      prepareAttachmentUpload(new File([tagged], "voice-note-1.wav", { type: "audio/wav" })),
+    ).rejects.toThrow("This media format isn't supported for upload.");
+    await expect(
+      prepareAttachmentUpload(new File([clean], "song.wav", { type: "audio/wav" })),
+    ).rejects.toThrow("This media format isn't supported for upload.");
+  });
+
   it("removes GIF comments without flattening animation blocks", async () => {
     const header = new Uint8Array([
       ...ascii("GIF89a"),

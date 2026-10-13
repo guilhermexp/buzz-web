@@ -7,6 +7,7 @@ import type {
   TimelineMessage,
   UserProfile,
 } from "@/features/chat/lib/chat-types";
+import { mentionOccurrences } from "@/features/composer/lib/mention-occurrences";
 import type { NostrEvent } from "@/shared/api/nostr-types";
 import { t } from "@/shared/i18n";
 import { truncatePubkey } from "@/shared/lib/pubkey";
@@ -415,18 +416,32 @@ export function buildTimeline(
     );
 }
 
+/** Members with a known display name, as typed-mention candidates. */
+export function memberMentionCandidates(
+  members: ChannelMember[],
+  profiles: Record<string, UserProfile>,
+): { displayName: string; pubkey: string }[] {
+  return members.flatMap((member) => {
+    const name = profiles[member.pubkey.toLowerCase()]?.name.trim();
+    return name ? [{ displayName: name, pubkey: member.pubkey.toLowerCase() }] : [];
+  });
+}
+
+/**
+ * Recipients for typed member names only (no picker bindings). Names shared by several
+ * members are ambiguous and resolve to nobody rather than fanning out to every namesake.
+ */
 export function resolveMentionPubkeys(
   content: string,
   members: ChannelMember[],
   profiles: Record<string, UserProfile>,
 ): string[] {
-  const lower = content.toLocaleLowerCase();
-  return members
-    .filter((member) => {
-      const name = profiles[member.pubkey]?.name.trim().toLocaleLowerCase();
-      return name ? lower.includes(`@${name}`) : false;
-    })
-    .map((member) => member.pubkey);
+  return mentionOccurrences(content, memberMentionCandidates(members, profiles)).flatMap(
+    (occurrence) => {
+      const identities = new Set(occurrence.candidates.map((candidate) => candidate.pubkey));
+      return identities.size === 1 ? [...identities] : [];
+    },
+  );
 }
 
 export function messageRecipientPubkeys(
@@ -436,8 +451,11 @@ export function messageRecipientPubkeys(
   senderPubkey: string,
   replyTo?: { authorPubkey: string; rootId: string } | null,
   messages: readonly TimelineMessage[] = [],
+  boundMentionPubkeys?: readonly string[],
 ): string[] {
-  const candidates = resolveMentionPubkeys(content, channel.members, profiles);
+  const candidates = boundMentionPubkeys
+    ? [...boundMentionPubkeys]
+    : resolveMentionPubkeys(content, channel.members, profiles);
   const channelAgents = new Set(
     channel.members
       .filter((member) => member.role === "bot")
@@ -477,6 +495,7 @@ export function buildMessageTags(
   mentions: string[],
   attachments: AttachmentDescriptor[],
   replyTo?: { id: string; rootId: string } | null,
+  extraTags: readonly string[][] = [],
 ): string[][] {
   const tags: string[][] = [["h", channelId]];
   if (replyTo) {
@@ -484,7 +503,8 @@ export function buildMessageTags(
     tags.push(["e", replyTo.id, "", "reply"]);
   }
   for (const pubkey of [...new Set(mentions)]) tags.push(["p", pubkey]);
-  for (const descriptor of attachments) {
+  // External media (e.g. provider-hosted GIFs) has no relay hash; desktop sends it body-only.
+  for (const descriptor of attachments.filter((attachment) => attachment.sha256)) {
     const tag = [
       "imeta",
       `url ${descriptor.url}`,
@@ -499,6 +519,7 @@ export function buildMessageTags(
     if (descriptor.filename) tag.push(`filename ${descriptor.filename}`);
     tags.push(tag);
   }
+  tags.push(...extraTags);
   return tags;
 }
 

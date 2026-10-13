@@ -76,3 +76,37 @@ describe("conversation drafts", () => {
     expect(localStorage.getItem(key)).toBeNull();
   });
 });
+
+describe("formatted drafts", () => {
+  it("restores Markdown and exact mention bindings only in their own scope", () => {
+    const key = conversationDraftKey("wss://relay.example", "AA", "general", "root");
+    const pubkey = "c".repeat(64);
+    writeConversationDraft(key, {
+      content: "**ship** it @Alex (cccc)",
+      attachments: [],
+      mentions: [["Alex", pubkey]],
+    });
+    expect(readConversationDraft(key)).toEqual({
+      content: "**ship** it @Alex (cccc)",
+      attachments: [],
+      mentions: [["Alex", pubkey]],
+    });
+    expect(
+      readConversationDraft(conversationDraftKey("wss://relay.example", "AA", "general")),
+    ).toEqual({ content: "", attachments: [] });
+  });
+
+  it("drops tampered mention bindings that are not exact keys", () => {
+    const key = conversationDraftKey("wss://relay.example", "AA", "general");
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        version: 1,
+        content: "@Alex",
+        attachments: [],
+        mentions: [["Alex", "not-a-key"], ["Bo", "d".repeat(64)], "junk"],
+      }),
+    );
+    expect(readConversationDraft(key).mentions).toEqual([["Bo", "d".repeat(64)]]);
+  });
+});

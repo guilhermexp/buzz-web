@@ -5,9 +5,15 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMentions from "@/features/chat/lib/remark-mentions";
 import { ImageAttachmentViewer } from "@/features/chat/ui/ImageAttachmentViewer";
+import { customEmojiFromTags } from "@/features/composer/lib/custom-emoji";
+import remarkCustomEmoji from "@/features/composer/lib/remark-custom-emoji";
+import { CustomEmojiImage } from "@/features/composer/ui/CustomEmojiImage";
+import { isVoiceNoteAttachment } from "@/features/voice/lib/voice-note";
+import { VoiceNoteAttachment } from "@/features/voice/ui/VoiceNoteAttachment";
 import { authenticatedMediaObjectUrl } from "@/shared/api/media-client";
 import { relayHttpOrigin } from "@/shared/config/runtime-config";
 import { t } from "@/shared/i18n";
+import { truncatePubkey } from "@/shared/lib/pubkey";
 
 const IMAGE_MAX_WIDTH = 384;
 const IMAGE_MAX_HEIGHT = 256;
@@ -24,6 +30,8 @@ export type MessageMention = {
 type MarkdownRenderContextValue = {
   dimensionsByUrl: ReadonlyMap<string, ImageDimensions>;
   mentionsByName: ReadonlyMap<string, MessageMention>;
+  voiceNotesByUrl: ReadonlyMap<string, { durationSeconds?: number }>;
+  customEmojiByShortcode: ReadonlyMap<string, string>;
   onDeleteMessage?: () => void;
   relayUrl: string;
 };
@@ -57,6 +65,23 @@ function imetaImageDimensions(mediaTags: readonly (readonly string[])[] | undefi
     if (url && parsed) dimensions.set(url, parsed);
   }
   return dimensions;
+}
+
+/** imeta voice notes (desktop audioAttachment.ts): their body link renders as a player. */
+function imetaVoiceNotes(mediaTags: readonly (readonly string[])[] | undefined) {
+  const voiceNotes = new Map<string, { durationSeconds?: number }>();
+  for (const tag of mediaTags ?? []) {
+    if (tag[0] !== "imeta") continue;
+    const field = (name: string) =>
+      tag.find((part) => part.startsWith(`${name} `))?.slice(name.length + 1);
+    const url = field("url");
+    if (!url || !isVoiceNoteAttachment({ filename: field("filename"), m: field("m") })) continue;
+    const duration = Number(field("duration"));
+    voiceNotes.set(url, {
+      durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : undefined,
+    });
+  }
+  return voiceNotes;
 }
 
 function isRelayMediaUrl(value: string | undefined, relayUrl: string): boolean {
@@ -217,7 +242,16 @@ const MarkdownImage: NonNullable<Components["img"]> = ({ src, alt }) => {
 };
 
 const MarkdownLink: NonNullable<Components["a"]> = ({ href, children }) => {
-  const { relayUrl } = useMarkdownRenderContext();
+  const { relayUrl, voiceNotesByUrl } = useMarkdownRenderContext();
+  const voiceNote = href ? voiceNotesByUrl.get(href) : undefined;
+  if (href && voiceNote) {
+    return (
+      <VoiceNoteAttachment
+        durationSeconds={voiceNote.durationSeconds}
+        source={{ url: href, relayUrl }}
+      />
+    );
+  }
   return (
     <ProtectedLink href={href} relayUrl={relayUrl}>
       {children}
@@ -225,10 +259,38 @@ const MarkdownLink: NonNullable<Components["a"]> = ({ href, children }) => {
   );
 };
 
+/** A paragraph holding a voice-note player must not be a <p> (the player is block content). */
+const MarkdownParagraph: NonNullable<Components["p"]> = ({ node, children }) => {
+  const { voiceNotesByUrl } = useMarkdownRenderContext();
+  const holdsVoiceNote = node?.children.some(
+    (child) =>
+      child.type === "element" &&
+      child.tagName === "a" &&
+      typeof child.properties.href === "string" &&
+      voiceNotesByUrl.has(child.properties.href),
+  );
+  return holdsVoiceNote ? <div>{children}</div> : <p>{children}</p>;
+};
+
+function MarkdownCustomEmoji({
+  shortcode,
+  children,
+}: {
+  shortcode?: string;
+  children?: React.ReactNode;
+}) {
+  const { customEmojiByShortcode, relayUrl } = useMarkdownRenderContext();
+  const url = shortcode ? customEmojiByShortcode.get(shortcode) : undefined;
+  if (!shortcode || !url) return <>{children}</>;
+  return <CustomEmojiImage relayUrl={relayUrl} shortcode={shortcode} url={url} />;
+}
+
 function MarkdownMention({ children }: { children?: React.ReactNode }) {
   const { mentionsByName } = useMarkdownRenderContext();
   const text = String(children ?? "");
   const label = text.replace(/^@/, "");
+  const qualified = label.match(/^(.*) \(([0-9a-f]{64})\)$/i);
+  const display = qualified ? `${qualified[1]} (${truncatePubkey(qualified[2])})` : label;
   const mention = mentionsByName.get(label.trim().toLocaleLowerCase());
   if (!mention) return <>{children}</>;
   return (
@@ -243,7 +305,7 @@ function MarkdownMention({ children }: { children?: React.ReactNode }) {
       ) : (
         <span className="buzz-message-mention-prefix">@</span>
       )}
-      {label}
+      {qualified ? <span title={label}>{display}</span> : label}
     </span>
   );
 }
@@ -251,7 +313,9 @@ function MarkdownMention({ children }: { children?: React.ReactNode }) {
 const MARKDOWN_COMPONENTS = {
   img: MarkdownImage,
   a: MarkdownLink,
+  p: MarkdownParagraph,
   mention: MarkdownMention,
+  "custom-emoji": MarkdownCustomEmoji,
 } as Components;
 
 function displayContent(content: string): string {
@@ -280,24 +344,51 @@ export function MessageContent({
   canDeleteMessage?: boolean;
   onDeleteMessage?: () => void;
 }) {
-  const mentionsByName = new Map(
-    mentions.map((mention) => [mention.name.trim().toLocaleLowerCase(), mention]),
-  );
-  const mentionNames = [...mentionsByName.values()].map((mention) => mention.name);
+  // A bare name binds only when one tagged identity carries it; full-key labels always bind.
+  const nameCounts = new Map<string, number>();
+  for (const mention of mentions) {
+    const key = mention.name.trim().toLocaleLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  const mentionsByName = new Map<string, MessageMention>();
+  for (const mention of mentions) {
+    const key = mention.name.trim().toLocaleLowerCase();
+    if (nameCounts.get(key) === 1) mentionsByName.set(key, mention);
+    mentionsByName.set(`${key} (${mention.pubkey.toLowerCase()})`, mention);
+  }
+  const mentionNames = [
+    ...new Set(
+      mentions.flatMap((mention) => [
+        mention.name,
+        `${mention.name} (${mention.pubkey.toLowerCase()})`,
+      ]),
+    ),
+  ];
   const dimensionsByUrl = imetaImageDimensions(mediaTags);
+  const voiceNotesByUrl = imetaVoiceNotes(mediaTags);
+  const customEmoji = customEmojiFromTags(mediaTags ?? []);
+  const customEmojiByShortcode = new Map(customEmoji.map((emoji) => [emoji.shortcode, emoji.url]));
+  const shortcodes = customEmoji.map((emoji) => emoji.shortcode);
 
   return (
     <MarkdownRenderContext.Provider
       value={{
         dimensionsByUrl,
         mentionsByName,
+        voiceNotesByUrl,
+        customEmojiByShortcode,
         onDeleteMessage: canDeleteMessage ? onDeleteMessage : undefined,
         relayUrl,
       }}
     >
       <div className="buzz-message-markdown">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks, [remarkMentions, { mentionNames }]]}
+          remarkPlugins={[
+            remarkGfm,
+            remarkBreaks,
+            [remarkMentions, { mentionNames }],
+            [remarkCustomEmoji, { shortcodes }],
+          ]}
           components={MARKDOWN_COMPONENTS}
         >
           {displayContent(content)}
