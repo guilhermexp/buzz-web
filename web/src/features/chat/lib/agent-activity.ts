@@ -1,4 +1,5 @@
 import { verifyEvent } from "nostr-tools/pure";
+import { isRecord } from "@/features/agents/lib/guards";
 import type { NostrEvent, RelayConnectionState } from "@/shared/api/nostr-types";
 
 export const AGENT_OBSERVER_FRAME_KIND = 24200;
@@ -45,7 +46,7 @@ export type AgentActivityStatus = {
   lastUpdatedAt: number | null;
 };
 
-type ActivityRecord = {
+export type ActivityRecord = {
   agentPubkey: string;
   channelId: string;
   frame: ObserverFrame;
@@ -72,10 +73,6 @@ function normalized(value: unknown): string | null {
 function tagValue(event: NostrEvent, name: string): string | null {
   const tag = event.tags.find((candidate) => candidate[0] === name);
   return typeof tag?.[1] === "string" ? tag[1] : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function optionalString(value: unknown): string | null {
@@ -177,7 +174,7 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
-function frameUpdate(frame: ObserverFrame): Record<string, unknown> | null {
+export function frameUpdate(frame: ObserverFrame): Record<string, unknown> | null {
   const params = isRecord(frame.payload) ? frame.payload.params : null;
   const update = isRecord(params) ? params.update : null;
   return isRecord(update) ? update : null;
@@ -329,11 +326,24 @@ export class AgentActivityStore {
   }
 
   ingest(agentPubkey: string, frame: ObserverFrame, receivedAt = Date.now()): boolean {
+    return this.ingestRecord(agentPubkey, frame, receivedAt) !== null;
+  }
+
+  /**
+   * Ingest one frame and return the stored record (with its resolved channel), or null when it is
+   * a duplicate, uncorrelated, or rejected by `accept` (current agent membership of the channel).
+   */
+  ingestRecord(
+    agentPubkey: string,
+    frame: ObserverFrame,
+    receivedAt = Date.now(),
+    accept?: (agentPubkey: string, channelId: string) => boolean,
+  ): ActivityRecord | null {
     const agent = agentPubkey.toLowerCase();
     const dedupeKey = `${agent}|${frame.seq}|${frame.timestamp}`;
-    if (this.dedupeKeys.has(dedupeKey)) return false;
+    if (this.dedupeKeys.has(dedupeKey)) return null;
     const channelId = this.resolveChannel(agent, frame);
-    if (!channelId) return false;
+    if (!channelId || (accept && !accept(agent, channelId))) return null;
     this.dedupeKeys.add(dedupeKey);
     while (this.dedupeKeys.size > MAX_DEDUPE_KEYS)
       this.dedupeKeys.delete(this.dedupeKeys.values().next().value as string);
@@ -353,7 +363,7 @@ export class AgentActivityStore {
     if (!current || compareFrames(frame, current.frame) > 0) this.records.set(key, record);
     while (this.records.size > MAX_RECORDS)
       this.records.delete(this.records.keys().next().value as string);
-    return true;
+    return record;
   }
 
   private resolveChannel(agentPubkey: string, frame: ObserverFrame): string | null {
@@ -387,6 +397,25 @@ export class AgentActivityStore {
     const current = this.correlations.get(key);
     if (current === undefined) this.correlations.set(key, channelId);
     else if (current !== channelId) this.correlations.set(key, null);
+  }
+
+  /**
+   * Drop every cached frame, status and pending submission for agent/channel pairs that are no
+   * longer members, so revoked channel access cannot keep surfacing stale observations.
+   * Returns whether anything was removed.
+   */
+  retainMembership(isMember: (agentPubkey: string, channelId: string) => boolean): boolean {
+    const before = this.history.length + this.records.size + this.submissions.size;
+    const kept = this.history.filter((record) => isMember(record.agentPubkey, record.channelId));
+    this.history.splice(0, this.history.length, ...kept);
+    for (const [key, record] of this.records) {
+      if (!isMember(record.agentPubkey, record.channelId)) this.records.delete(key);
+    }
+    for (const key of this.submissions.keys()) {
+      const [agentPubkey = "", channelId = ""] = key.split("|");
+      if (!isMember(agentPubkey, channelId)) this.submissions.delete(key);
+    }
+    return this.history.length + this.records.size + this.submissions.size !== before;
   }
 
   getItems(

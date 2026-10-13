@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  appendFrames,
+  archiveAvailable,
+  archiveScope,
+  pruneFrames,
+  readRetentionDays,
+} from "@/features/agents/lib/observer-archive";
+import {
+  type ActivityRecord,
   AGENT_OBSERVER_FRAME_KIND,
   type AgentActivityItem,
   type AgentActivityStatus,
@@ -8,6 +16,7 @@ import {
   unwrapObserverBatch,
   validateObserverEvent,
 } from "@/features/chat/lib/agent-activity";
+import type { BuzzChannel } from "@/features/chat/lib/chat-types";
 import type { NostrEvent, NostrFilter, RelayConnectionState } from "@/shared/api/nostr-types";
 import type { BuzzRelayClient } from "@/shared/api/relay-client";
 import {
@@ -58,11 +67,17 @@ export function useLiveAgentActivity({
   demo,
   knownAgentPubkeys,
   ownerPubkey,
+  channels,
 }: {
   client: BuzzRelayClient | null;
   demo: boolean;
   knownAgentPubkeys: readonly string[];
   ownerPubkey: string;
+  /**
+   * Current channel membership. When given, frames are kept (and archived) only for channels the
+   * agent is still a member of, and removing an agent drops its cached and archived frames there.
+   */
+  channels?: readonly BuzzChannel[];
 }): {
   available: boolean;
   connection: RelayConnectionState;
@@ -91,6 +106,52 @@ export function useLiveAgentActivity({
     (canDecryptNip44FromPeer() &&
       getActiveSignerPubkey()?.toLowerCase() === ownerPubkey.toLowerCase());
   const processing = useRef(Promise.resolve());
+  const scope = client ? archiveScope(client.relayUrl, ownerPubkey) : null;
+  const membership = useMemo(
+    () =>
+      channels
+        ? new Map(
+            channels.map((channel) => [
+              channel.id,
+              new Set(channel.members.map((member) => member.pubkey.toLowerCase())),
+            ]),
+          )
+        : null,
+    [channels],
+  );
+  const membershipRef = useRef(membership);
+  membershipRef.current = membership;
+  const previousMembership = useRef<typeof membership>(null);
+
+  useEffect(() => {
+    const previous = previousMembership.current;
+    previousMembership.current = membership;
+    if (!membership) return;
+    if (store.retainMembership((agent, channel) => membership.get(channel)?.has(agent) ?? false)) {
+      setVersion((current) => current + 1);
+    }
+    if (!previous || !scope || demo || !archiveAvailable()) return;
+    // Only pairs whose channel is still listed but no longer contains the agent count as
+    // removals; a channel missing from a transient reload must not erase observed history.
+    const removed = new Set<string>();
+    for (const [channelId, members] of previous) {
+      const current = membership.get(channelId);
+      if (!current) continue;
+      for (const agent of members) if (!current.has(agent)) removed.add(`${agent}|${channelId}`);
+    }
+    if (removed.size) {
+      void pruneFrames(
+        scope,
+        readRetentionDays(scope),
+        (frame) => !removed.has(`${frame.agentPubkey}|${frame.channelId}`),
+      ).catch(() => undefined);
+    }
+  }, [demo, membership, scope, store]);
+
+  useEffect(() => {
+    if (!scope || demo || !archiveAvailable()) return;
+    void pruneFrames(scope, readRetentionDays(scope)).catch(() => undefined);
+  }, [demo, scope]);
 
   useEffect(() => {
     if (demo) {
@@ -127,8 +188,21 @@ export function useLiveAgentActivity({
             if (plaintext.length > MAX_OBSERVER_PLAINTEXT_CHARS) return;
             const parsed = parseObserverFrame(JSON.parse(plaintext));
             if (!parsed) return;
+            const current = membershipRef.current;
+            const accept = current
+              ? (agent: string, channel: string) => current.get(channel)?.has(agent) ?? false
+              : undefined;
+            const receivedAt = Date.now();
+            const archived: ActivityRecord[] = [];
             for (const frame of unwrapObserverBatch(parsed)) {
-              if (store.ingest(agentPubkey, frame)) setVersion((current) => current + 1);
+              const record = store.ingestRecord(agentPubkey, frame, receivedAt, accept);
+              if (record) archived.push(record);
+            }
+            if (archived.length) {
+              setVersion((value) => value + 1);
+              if (scope && archiveAvailable()) {
+                void appendFrames(scope, archived).catch(() => undefined);
+              }
             }
             setConnection("connected");
           } catch {
@@ -161,7 +235,7 @@ export function useLiveAgentActivity({
       cancelled = true;
       unsubscribe?.();
     };
-  }, [available, client, demo, knownAgents, ownerPubkey, store]);
+  }, [available, client, demo, knownAgents, ownerPubkey, scope, store]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setVersion((current) => current + 1), 1_000);
