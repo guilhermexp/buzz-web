@@ -5,12 +5,13 @@ import { t } from "@/shared/i18n";
 /** Shown at the start of an empty channel, mirroring desktop's channel intro. */
 export function ChannelIntro({
   channel,
-  canManage,
+  canAdd,
   onAddPeople,
   onAddAgent,
 }: {
   channel: BuzzChannel;
-  canManage: boolean;
+  /** Whether this identity may add people/agents here (relay put-user rule). */
+  canAdd: boolean;
   onAddPeople: () => void;
   onAddAgent: () => void;
 }) {
@@ -43,7 +44,7 @@ export function ChannelIntro({
           {channel.description}
         </p>
       ) : null}
-      {canManage ? (
+      {canAdd ? (
         <div className="mt-5 flex flex-wrap gap-2">
           <button className={actionClass} type="button" onClick={onAddPeople}>
             <UsersRound aria-hidden="true" className="h-4 w-4 text-muted-foreground" />

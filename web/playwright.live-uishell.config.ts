@@ -22,7 +22,7 @@ function liveBaseUrl(): string {
 // Screenshots, traces and videos stay off because identities are real keys.
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: ["**/live-uishell.spec.ts"],
+  testMatch: ["**/live-uishell.spec.ts", "**/live-uishell-intro.spec.ts"],
   timeout: 180_000,
   globalTimeout: 20 * 60_000,
   expect: { timeout: 15_000 },

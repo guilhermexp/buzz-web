@@ -12,6 +12,7 @@ import { MessageComposer } from "@/features/chat/ui/MessageComposer";
 import { MessageList } from "@/features/chat/ui/MessageList";
 import { ChannelBodyOverride, ChannelSurfaceExtras } from "@/features/chat/ui/WorkspaceExtensions";
 import type { ComposerSendExtras } from "@/features/composer/lib/send-extras";
+import { channelAddRoles } from "@/features/workspace/lib/channel-permissions";
 import { ChannelHeader } from "@/features/workspace/ui/ChannelHeader";
 import { ChannelIntro } from "@/features/workspace/ui/ChannelIntro";
 import { t } from "@/shared/i18n";
@@ -118,7 +119,7 @@ export function ChannelSurface({
           intro={
             historyStartLoaded && channel.type !== "dm" ? (
               <ChannelIntro
-                canManage={canManageChannel && !channel.archived}
+                canAdd={channelAddRoles(channel, pubkey).length > 0}
                 channel={channel}
                 onAddAgent={onAddAgent}
                 onAddPeople={onAddPeople}

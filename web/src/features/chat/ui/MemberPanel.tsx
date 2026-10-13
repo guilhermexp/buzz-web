@@ -30,6 +30,7 @@ export function MemberDialog({
   onSetMember,
   onRemoveMember,
   initialAddOpen = false,
+  addRoles,
 }: {
   channel: BuzzChannel;
   profiles: Record<string, UserProfile>;
@@ -44,6 +45,8 @@ export function MemberDialog({
   onRemoveMember: (pubkey: string) => Promise<void>;
   /** Open with the add-member form expanded (channel intro "Add people"). */
   initialAddOpen?: boolean;
+  /** Roles this identity may grant when adding (relay put-user rule); empty hides the form. */
+  addRoles: readonly (typeof MANAGEABLE_ROLES)[number][];
 }) {
   const [addOpen, setAddOpen] = useState(initialAddOpen);
   // The role a pending change requested: shown (disabled, with a spinner)
@@ -94,7 +97,7 @@ export function MemberDialog({
         onClose={onClose}
       >
         <div className="flex min-h-0 max-h-[72dvh] flex-col">
-          {canManage && channel.type !== "dm" ? (
+          {addRoles.length ? (
             <div className="border-b p-3">
               <button
                 aria-expanded={addOpen}
@@ -142,7 +145,7 @@ export function MemberDialog({
                       setNewRole(event.target.value as (typeof MANAGEABLE_ROLES)[number])
                     }
                   >
-                    {MANAGEABLE_ROLES.map((role) => (
+                    {addRoles.map((role) => (
                       <option key={role} value={role}>
                         {roleLabel(role)}
                       </option>

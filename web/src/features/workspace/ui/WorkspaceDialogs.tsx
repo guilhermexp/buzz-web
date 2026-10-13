@@ -12,6 +12,7 @@ import { MemberDialog } from "@/features/chat/ui/MemberPanel";
 import { DeleteMessageDialog, EditMessageDialog } from "@/features/chat/ui/MessageDialogs";
 import { addCommunityMember, mintCommunityInvite } from "@/features/community/invite-api";
 import { CommunityInviteDialog } from "@/features/community/ui/CommunityInviteDialog";
+import { channelAddRoles } from "@/features/workspace/lib/channel-permissions";
 import type { SavedCommunity } from "@/features/workspace/lib/saved-communities";
 import { AddChannelAgentDialog } from "@/features/workspace/ui/AddChannelAgentDialog";
 import {
@@ -203,6 +204,7 @@ export function WorkspaceDialogs({
           canManage={canManageChannel(channel)}
           channel={channel}
           currentPubkey={pubkey}
+          addRoles={channelAddRoles(channel, pubkey)}
           initialAddOpen={dialog.addOpen}
           presence={state.presence}
           profiles={state.profiles}
