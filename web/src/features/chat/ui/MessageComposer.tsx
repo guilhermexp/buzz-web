@@ -300,36 +300,48 @@ export function MessageComposer({
     sendingRef.current = true;
     setSending(true);
     setError(null);
-    // Desktop clears before publishing: the timeline already shows the optimistic message,
-    // and this composer may switch conversations while the send is in flight, so all
-    // clearing happens here, in the sent conversation's scope, never after the await.
-    clearComposer(editor);
-    files.replaceMedia([], null);
-    bindings.current = new Map();
-    setMentionQuery(null);
-    if (draftTimer.current) window.clearTimeout(draftTimer.current);
-    draftDirty.current = false;
-    if (sentKey) clearConversationDraft(sentKey);
     try {
-      const voice = await uploadVoiceNote();
-      const attachments = voice ? [...sent.draft.attachments, voice] : sent.draft.attachments;
-      await onSend(contentWithAttachments(markdown, attachments), attachments, {
-        mentionPubkeys,
-        emojiTags: customEmojiTags(markdown, customEmoji),
-      });
-    } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : t("error.messageSend"));
-      // Restore the failed message where it was written, unless that composer moved on.
-      if (!editor.isDestroyed && activeDraftKey.current === sentKey && !composerHasText(editor)) {
-        bindings.current = new Map(sent.draft.mentions);
-        editor.commands.setContent(sent.doc, { emitUpdate: false });
-        files.replaceMedia(sent.draft.attachments, sent.voiceNote);
-        setHasText(composerHasText(editor));
+      // The voice note stays in the tray (composer read-only) until its single upload is done;
+      // a failed upload keeps the whole message in place for a retry.
+      let voice: AttachmentDescriptor | null;
+      try {
+        voice = await uploadVoiceNote();
+      } catch (uploadError) {
+        setError(uploadError instanceof Error ? uploadError.message : t("error.messageSend"));
+        return;
       }
-      if (sentKey) {
-        const stored = readConversationDraft(sentKey);
-        if (!stored.content.trim() && !stored.attachments.length) {
-          writeConversationDraft(sentKey, sent.draft);
+      // Desktop clears before publishing: the timeline already shows the optimistic message.
+      // A reused composer may have switched conversations during the upload; only the sent
+      // conversation's composer state and stored draft are cleared.
+      if (!editor.isDestroyed && activeDraftKey.current === sentKey) {
+        clearComposer(editor);
+        files.replaceMedia([], null);
+        bindings.current = new Map();
+        setMentionQuery(null);
+        if (draftTimer.current) window.clearTimeout(draftTimer.current);
+        draftDirty.current = false;
+      }
+      if (sentKey) clearConversationDraft(sentKey);
+      try {
+        const attachments = voice ? [...sent.draft.attachments, voice] : sent.draft.attachments;
+        await onSend(contentWithAttachments(markdown, attachments), attachments, {
+          mentionPubkeys,
+          emojiTags: customEmojiTags(markdown, customEmoji),
+        });
+      } catch (sendError) {
+        setError(sendError instanceof Error ? sendError.message : t("error.messageSend"));
+        // Restore the failed message where it was written, unless that composer moved on.
+        if (!editor.isDestroyed && activeDraftKey.current === sentKey && !composerHasText(editor)) {
+          bindings.current = new Map(sent.draft.mentions);
+          editor.commands.setContent(sent.doc, { emitUpdate: false });
+          files.replaceMedia(sent.draft.attachments, sent.voiceNote);
+          setHasText(composerHasText(editor));
+        }
+        if (sentKey) {
+          const stored = readConversationDraft(sentKey);
+          if (!stored.content.trim() && !stored.attachments.length) {
+            writeConversationDraft(sentKey, sent.draft);
+          }
         }
       }
     } finally {
