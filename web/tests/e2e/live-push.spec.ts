@@ -1,0 +1,417 @@
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, rm } from "node:fs/promises";
+import { resolve } from "node:path";
+import { type BrowserContext, expect, firefox, type Page, test } from "@playwright/test";
+import {
+  browserEnvironment,
+  identityFromEnvironment,
+  importIdentity,
+  liveRelayUrl,
+  openChannel,
+} from "./support/live-session";
+import { NodeRelayClient } from "./support/node-relay";
+
+// Real background delivery: relay → RFC 8291/8292 Web Push → Mozilla autopush
+// (internet) → Firefox service worker, with every app tab closed.
+
+const EVIDENCE_DIR = resolve(process.env.BUZZ_PUSH_EVIDENCE_DIR ?? "../.tmp/push");
+const EVIDENCE_LOG = resolve(EVIDENCE_DIR, "live-push-evidence.log");
+
+type SwState = {
+  notifications: Array<{ title: string; body: string; tag: string; url: string | null }>;
+  received: Array<{
+    receivedAt: number;
+    origin: string | null;
+    channel: string | null;
+    event: string | null;
+    kind: number | null;
+    shown: boolean;
+    url: string | null;
+    error?: string;
+  }>;
+  subscribed: boolean;
+};
+
+async function evidence(step: string, detail: Record<string, unknown> = {}) {
+  await appendFile(
+    EVIDENCE_LOG,
+    `${JSON.stringify({ at: new Date().toISOString(), step, ...detail })}\n`,
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve: done } = Promise.withResolvers<void>();
+  setTimeout(done, ms);
+  return promise;
+}
+
+/**
+ * Read the worker's state from a same-origin document that is NOT the app
+ * (the raw sw.js script), so no app tab exists while push is delivered.
+ */
+async function readWorkerState(context: BrowserContext, baseURL: string): Promise<SwState> {
+  const probe = await context.newPage();
+  try {
+    await probe.goto(new URL("sw.js", baseURL).toString());
+    return await probe.evaluate(async (scope) => {
+      const registration = await navigator.serviceWorker.getRegistration(scope);
+      const notifications = registration ? await registration.getNotifications() : [];
+      const subscription = await registration?.pushManager.getSubscription();
+      const received = await new Promise<SwState["received"]>((done, fail) => {
+        const open = indexedDB.open("buzz-push", 1);
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore("enrollments", { keyPath: "origin" });
+          open.result.createObjectStore("received", { autoIncrement: true });
+        };
+        open.onerror = () => fail(open.error);
+        open.onsuccess = () => {
+          const request = open.result.transaction("received").objectStore("received").getAll();
+          request.onsuccess = () => {
+            open.result.close();
+            done(request.result);
+          };
+          request.onerror = () => fail(request.error);
+        };
+      });
+      return {
+        notifications: notifications.map((notification) => ({
+          title: notification.title,
+          body: notification.body,
+          tag: notification.tag,
+          url: typeof notification.data?.url === "string" ? notification.data.url : null,
+        })),
+        received,
+        subscribed: Boolean(subscription),
+      };
+    }, new URL("./", baseURL).pathname);
+  } finally {
+    await probe.close();
+  }
+}
+
+async function waitForReceived(
+  context: BrowserContext,
+  baseURL: string,
+  eventId: string,
+  timeoutMs = 180_000,
+): Promise<SwState> {
+  const deadline = Date.now() + timeoutMs;
+  let state = await readWorkerState(context, baseURL);
+  while (!state.received.some((entry) => entry.event === eventId) && Date.now() < deadline) {
+    await delay(5_000);
+    state = await readWorkerState(context, baseURL);
+  }
+  return state;
+}
+
+async function openNotificationSettings(page: Page) {
+  await page.keyboard.press("Control+,");
+  const settings = page.getByTestId("workspace-tool-settings");
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Notifications", exact: true }).click();
+  return settings.getByRole("region", { name: "Notifications" });
+}
+
+/** Publish as the sender, waiting out the shared relay's per-identity rate limit. */
+async function publish(
+  admin: NodeRelayClient,
+  secretKey: Uint8Array,
+  kind: number,
+  tags: string[][],
+  content = "",
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await admin.publish(
+        { kind, created_at: Math.floor(Date.now() / 1000), content, tags },
+        secretKey,
+      );
+    } catch (error) {
+      const retry = String(error).match(/rate-limited.*retry in (\d+)s/);
+      if (!retry || attempt >= 10) throw error;
+      await delay((Number(retry[1]) + 1) * 1000);
+    }
+  }
+}
+
+async function createChannel(admin: NodeRelayClient, secretKey: Uint8Array, name: string) {
+  const id = randomUUID();
+  await publish(admin, secretKey, 9007, [
+    ["h", id],
+    ["name", name],
+    ["visibility", "private"],
+    ["channel_type", "stream"],
+    ["about", "Automated push acceptance; safe to archive."],
+  ]);
+  return id;
+}
+
+async function mention(
+  admin: NodeRelayClient,
+  secretKey: Uint8Array,
+  channelId: string,
+  pubkey: string,
+  text: string,
+) {
+  return publish(
+    admin,
+    secretKey,
+    9,
+    [
+      ["h", channelId],
+      ["p", pubkey],
+    ],
+    `${text} nostr:${pubkey}`,
+  );
+}
+
+test("background push reaches a closed Firefox tab and opens the exact event", async ({
+  baseURL,
+}) => {
+  if (!baseURL) throw new Error("baseURL is required");
+  const relayUrl = liveRelayUrl();
+  const member = identityFromEnvironment("BUZZ_LIVE_MEMBER_NSEC");
+  const sender = identityFromEnvironment("BUZZ_LIVE_ADMIN_NSEC");
+  await mkdir(EVIDENCE_DIR, { recursive: true });
+  const profileDir = resolve(EVIDENCE_DIR, "firefox-profile");
+  await rm(profileDir, { recursive: true, force: true });
+  await evidence("start", { baseURL, relayUrl, browser: "firefox (persistent profile)" });
+
+  const admin = await NodeRelayClient.connect(relayUrl, sender.secretKey);
+  const sharedName = `push-shared-${Date.now().toString(36)}`;
+  const shared = await createChannel(admin, sender.secretKey, sharedName);
+  await publish(admin, sender.secretKey, 9000, [
+    ["h", shared],
+    ["p", member.pubkey],
+    ["role", "member"],
+  ]);
+  const controlName = `push-control-${Date.now().toString(36)}`;
+  const controlChannel = await createChannel(admin, sender.secretKey, controlName);
+  await publish(admin, sender.secretKey, 9000, [
+    ["h", controlChannel],
+    ["p", member.pubkey],
+    ["role", "member"],
+  ]);
+  const hidden = await createChannel(
+    admin,
+    sender.secretKey,
+    `push-hidden-${Date.now().toString(36)}`,
+  );
+  await evidence("channels-created", { shared, hidden, memberOnlyIn: "shared" });
+
+  const context = await firefox.launchPersistentContext(profileDir, {
+    baseURL,
+    locale: "en-US",
+    env: browserEnvironment(),
+    viewport: { width: 1440, height: 900 },
+    firefoxUserPrefs: {
+      "dom.push.enabled": true,
+      "dom.push.connection.enabled": true,
+      "dom.push.serverURL": "wss://push.services.mozilla.com/",
+      "dom.serviceWorkers.enabled": true,
+      "dom.webnotifications.enabled": true,
+      "permissions.default.desktop-notification": 1,
+      // Headless Firefox has no system notification daemon; use Firefox's own alerts.
+      "alerts.useSystemBackend": false,
+      // BUZZ_PUSH_DEBUG=1 + DEBUG=pw:browser surfaces Firefox's push service log.
+      ...(process.env.BUZZ_PUSH_DEBUG
+        ? {
+            "dom.push.loglevel": "debug",
+            "browser.dom.window.dump.enabled": true,
+            "devtools.console.stdout.chrome": true,
+            "devtools.console.stdout.content": true,
+          }
+        : {}),
+    },
+  });
+  try {
+    // Keep the browser (and its push connection) alive while the app tab is closed.
+    const keepAlive = context.pages()[0] ?? (await context.newPage());
+    await keepAlive.goto("about:blank");
+
+    const app = await context.newPage();
+    await importIdentity(app, member);
+    const section = await openNotificationSettings(app);
+    await expect(section.locator("[data-push-status]")).toHaveText("Off");
+    await app.screenshot({ path: resolve(EVIDENCE_DIR, "settings-notifications-off-desktop.png") });
+    await section.getByRole("button", { name: "Turn on notifications" }).click();
+    await expect(section.locator("[data-push-status]")).toHaveText("On", { timeout: 60_000 });
+    await expect(section.getByRole("checkbox", { name: /Direct messages/ })).toBeChecked();
+    await app.screenshot({ path: resolve(EVIDENCE_DIR, "settings-notifications-on-desktop.png") });
+    await app.setViewportSize({ width: 390, height: 844 });
+    // Narrowing the viewport can leave the mobile navigation drawer open over Settings.
+    await app.keyboard.press("Escape");
+    await expect(section.getByRole("heading", { name: "Notifications" })).toBeInViewport();
+    await app.screenshot({ path: resolve(EVIDENCE_DIR, "settings-notifications-on-mobile.png") });
+    await app.setViewportSize({ width: 1440, height: 900 });
+    const enrolled = await readWorkerState(context, baseURL);
+    expect(enrolled.subscribed).toBe(true);
+    await evidence("enrolled", { subscribed: enrolled.subscribed });
+    await app.close();
+    expect(context.pages().every((page) => page.url() === "about:blank")).toBe(true);
+    await evidence("app-tabs-closed", { openPages: context.pages().map((page) => page.url()) });
+
+    // Non-member channel first: the relay must suppress it at match/delivery time.
+    const blocked = await mention(admin, sender.secretKey, hidden, member.pubkey, "hidden mention");
+    const delivered = await mention(
+      admin,
+      sender.secretKey,
+      shared,
+      member.pubkey,
+      `push acceptance ${Date.now().toString(36)}`,
+    );
+    await evidence("events-published", { blocked: blocked.id, delivered: delivered.id });
+
+    const afterDelivery = await waitForReceived(context, baseURL, delivered.id);
+    const entry = afterDelivery.received.find((candidate) => candidate.event === delivered.id);
+    await evidence("worker-receipt", { entry: entry ?? null });
+    expect(entry, "service worker received the push with the app tab closed").toBeTruthy();
+    expect(entry?.shown).toBe(true);
+    expect(entry?.channel).toBe(shared);
+    expect(entry?.kind).toBe(9);
+    const notification = afterDelivery.notifications.find(
+      (candidate) => candidate.tag === `buzz-push-${delivered.id}`,
+    );
+    expect(notification, "notification is displayed").toBeTruthy();
+    expect(notification?.body).not.toContain("push acceptance");
+    const url = new URL(notification?.url ?? "");
+    expect(url.searchParams.get("community")).toBe(relayUrl);
+    expect(url.searchParams.get("channel")).toBe(shared);
+    expect(url.searchParams.get("event")).toBe(delivered.id);
+    await evidence("delivered-with-tab-closed", {
+      event: delivered.id,
+      receivedAt: entry?.receivedAt,
+      latencyMs: entry ? entry.receivedAt - delivered.created_at * 1000 : null,
+      notification,
+    });
+
+    // Give the earlier non-member event ample time; it must never arrive.
+    await delay(20_000);
+    const afterHidden = await readWorkerState(context, baseURL);
+    expect(afterHidden.received.some((candidate) => candidate.event === blocked.id)).toBe(false);
+    await evidence("non-member-suppressed", {
+      event: blocked.id,
+      receivedEvents: afterHidden.received.map((candidate) => candidate.event),
+    });
+
+    // Opening the notification URL resolves the exact event after re-checking access.
+    const opened = await context.newPage();
+    await opened.goto(notification?.url ?? "");
+    await opened.getByLabel("Vault passphrase").fill(member.vaultPassphrase);
+    await opened.getByRole("button", { name: "Unlock" }).click();
+    await expect(opened.getByRole("heading", { name: sharedName, exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(opened.getByText(delivered.content.split(" nostr:")[0])).toBeVisible();
+    await expect.poll(() => new URL(opened.url()).searchParams.get("event")).toBeNull();
+    await evidence("deep-link-resolved", { channel: shared, event: delivered.id });
+
+    // Click with the app already open: the worker posts {type:"buzz-push-open", url}
+    // to the focused tab. Playwright cannot click OS notifications or dispatch
+    // notificationclick, so the page receives that exact message on
+    // navigator.serviceWorker (the bridge's listener) while Settings is showing.
+    await openNotificationSettings(opened);
+    await expect(opened.getByRole("heading", { name: sharedName, exact: true })).toBeHidden();
+    await opened.evaluate((url) => {
+      navigator.serviceWorker.dispatchEvent(
+        new MessageEvent("message", { data: { type: "buzz-push-open", url } }),
+      );
+    }, notification?.url ?? "");
+    await expect(opened.getByRole("heading", { name: sharedName, exact: true })).toBeVisible();
+    await expect(opened.getByText(delivered.content.split(" nostr:")[0])).toBeVisible();
+    await evidence("open-tab-message-resolved", {
+      method:
+        "dispatched worker message on navigator.serviceWorker (notificationclick not drivable)",
+      event: delivered.id,
+    });
+
+    // Opt the control channel into all messages, then mute it: the lease is
+    // republished; channel-wide traffic stops but mentions still notify
+    // (desktop/mobile parity: mention fires before the mute check).
+    const prefs = await openNotificationSettings(opened);
+    await prefs.getByRole("checkbox", { name: `#${controlName}` }).check();
+    await expect(opened.getByText("Notification choices saved")).toBeVisible();
+    // Positive control: once opted in, channel-wide traffic is delivered.
+    const optedIn = await publish(
+      admin,
+      sender.secretKey,
+      9,
+      [["h", controlChannel]],
+      "opted-in channel-wide message",
+    );
+    const afterOptIn = await waitForReceived(context, baseURL, optedIn.id);
+    expect(afterOptIn.received.some((candidate) => candidate.event === optedIn.id)).toBe(true);
+    await evidence("opted-in-channel-wide-delivered", { event: optedIn.id });
+    await opened.keyboard.press("Escape");
+    await openChannel(opened, controlName);
+    await opened.getByRole("button", { name: "Channel details" }).click();
+    const details = opened.getByRole("complementary", { name: "Channel details" });
+    await details.getByRole("button", { name: "Mute channel" }).click();
+    await expect(details.getByRole("button", { name: "Unmute channel" })).toBeVisible();
+    await delay(10_000); // bridge debounce (2s) + NIP-44 lease publish
+    await opened.close();
+    const plain = await publish(
+      admin,
+      sender.secretKey,
+      9,
+      [["h", controlChannel]],
+      "muted channel-wide message",
+    );
+    const mutedMention = await mention(
+      admin,
+      sender.secretKey,
+      controlChannel,
+      member.pubkey,
+      "mention in muted channel",
+    );
+    const afterMute = await waitForReceived(context, baseURL, mutedMention.id);
+    expect(afterMute.received.some((candidate) => candidate.event === mutedMention.id)).toBe(true);
+    await delay(15_000);
+    const mutedState = await readWorkerState(context, baseURL);
+    expect(mutedState.received.some((candidate) => candidate.event === plain.id)).toBe(false);
+    await evidence("muted-channel-drops-channel-wide-keeps-mentions", {
+      channelWide: plain.id,
+      mention: mutedMention.id,
+      receivedEvents: mutedState.received.map((candidate) => candidate.event),
+    });
+
+    // Revocation: active:false lease + unsubscribe; later events deliver nothing.
+    const settingsPage = await context.newPage();
+    await settingsPage.goto("./");
+    await settingsPage.getByLabel("Vault passphrase").fill(member.vaultPassphrase);
+    await settingsPage.getByRole("button", { name: "Unlock" }).click();
+    await expect(settingsPage.getByRole("button", { name: "Profile menu" })).toBeVisible();
+    const revokeSection = await openNotificationSettings(settingsPage);
+    await revokeSection.getByRole("button", { name: "Turn off notifications" }).click();
+    await expect(revokeSection.locator("[data-push-status]")).toHaveText("Off", {
+      timeout: 60_000,
+    });
+    await settingsPage.close();
+    const revokedState = await readWorkerState(context, baseURL);
+    expect(revokedState.subscribed).toBe(false);
+    const afterRevoke = await mention(
+      admin,
+      sender.secretKey,
+      shared,
+      member.pubkey,
+      "after revoke",
+    );
+    await delay(60_000);
+    const finalState = await readWorkerState(context, baseURL);
+    expect(finalState.received.some((candidate) => candidate.event === afterRevoke.id)).toBe(false);
+    await evidence("revoked-receives-nothing", {
+      event: afterRevoke.id,
+      subscribed: finalState.subscribed,
+      receivedEvents: finalState.received.map((candidate) => candidate.event),
+    });
+  } finally {
+    await context.close();
+    for (const channel of [shared, controlChannel, hidden]) {
+      await publish(admin, sender.secretKey, 9002, [
+        ["h", channel],
+        ["archived", "true"],
+      ]).catch(() => undefined);
+    }
+    admin.close();
+  }
+});
