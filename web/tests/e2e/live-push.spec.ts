@@ -415,3 +415,67 @@ test("background push reaches a closed Firefox tab and opens the exact event", a
     admin.close();
   }
 });
+
+test("denied notification permission shows blocked and enrolls nothing", async ({ baseURL }) => {
+  if (!baseURL) throw new Error("baseURL is required");
+  const relayUrl = liveRelayUrl();
+  const member = identityFromEnvironment("BUZZ_LIVE_MEMBER_NSEC");
+  await mkdir(EVIDENCE_DIR, { recursive: true });
+  const profileDir = resolve(EVIDENCE_DIR, "firefox-profile-denied");
+  await rm(profileDir, { recursive: true, force: true });
+  // Lease reads are author-only, so the member's own authenticated view is complete.
+  const own = await NodeRelayClient.connect(relayUrl, member.secretKey);
+  const leaseFilter = [{ kinds: [30350], authors: [member.pubkey] }];
+  const leaseState = async () =>
+    (await own.query(leaseFilter)).map((event) => `${event.id}:${event.created_at}`).sort();
+  const before = await leaseState();
+  await evidence("denied-start", { leasesBefore: before.length });
+
+  const context = await firefox.launchPersistentContext(profileDir, {
+    baseURL,
+    locale: "en-US",
+    env: browserEnvironment(),
+    viewport: { width: 1440, height: 900 },
+    firefoxUserPrefs: {
+      "dom.push.enabled": true,
+      "dom.push.connection.enabled": true,
+      "dom.push.serverURL": "wss://push.services.mozilla.com/",
+      "dom.serviceWorkers.enabled": true,
+      "dom.webnotifications.enabled": true,
+      // 2 = block: the same state as a user choosing "Block" for the site.
+      "permissions.default.desktop-notification": 2,
+    },
+  });
+  try {
+    const app = context.pages()[0] ?? (await context.newPage());
+    await importIdentity(app, member);
+    expect(await app.evaluate(() => Notification.permission)).toBe("denied");
+    const section = await openNotificationSettings(app);
+    await expect(section.locator("[data-push-status]")).toHaveText("Blocked");
+    await expect(
+      section.getByText(
+        "Notifications are blocked for this site. Allow them in your browser's site settings, then turn them on here.",
+      ),
+    ).toBeVisible();
+    await expect(section.getByRole("button", { name: "Turn on notifications" })).toHaveCount(0);
+    await app.screenshot({
+      path: resolve(EVIDENCE_DIR, "settings-notifications-blocked-desktop.png"),
+    });
+    // Give the background bridge time to (not) act before checking side effects.
+    await delay(10_000);
+    const state = await readWorkerState(context, baseURL);
+    expect(state.subscribed).toBe(false);
+    const after = await leaseState();
+    expect(after).toEqual(before);
+    await evidence("denied-blocked-no-enrollment", {
+      permission: "denied",
+      status: "Blocked",
+      subscribed: state.subscribed,
+      leasesBefore: before.length,
+      leasesAfter: after.length,
+    });
+  } finally {
+    await context.close();
+    own.close();
+  }
+});
