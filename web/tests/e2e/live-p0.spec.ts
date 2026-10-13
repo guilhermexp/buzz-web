@@ -48,7 +48,7 @@ async function waitForRelay(page: Page) {
     .filter({ hasText: "Status" })
     .locator("xpath=following-sibling::dd[1]");
   await expect(status).toHaveText("Connected", { timeout: 30_000 });
-  await settings.getByRole("button", { name: "Back" }).click();
+  await settings.getByRole("button", { name: "Back", exact: true }).click();
 }
 
 async function importIdentity(page: Page, identity: LiveIdentity) {
@@ -165,7 +165,7 @@ async function exerciseReconnectInboxRecovery(
 ) {
   await memberPage
     .getByTestId("workspace-tool-settings")
-    .getByRole("button", { name: "Back" })
+    .getByRole("button", { name: "Back", exact: true })
     .click();
   const memberRootText = `member reconnect root ${runId}`;
   const memberComposer = memberPage.getByLabel(`Send a message to #${channelName}`);
@@ -180,6 +180,7 @@ async function exerciseReconnectInboxRecovery(
   await memberPage.keyboard.press("Control+,");
   const settings = memberPage.getByTestId("workspace-tool-settings");
   await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Identity" }).click();
   const status = settings
     .locator("dt")
     .filter({ hasText: "Status" })
