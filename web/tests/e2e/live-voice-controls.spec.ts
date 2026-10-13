@@ -274,11 +274,26 @@ test("mute, removed device, deafen and reconnect keep audio and capture consiste
     await expect(page.getByRole("button", { name: "Mute microphone" })).toBeEnabled();
     await expect.poll(() => liveCaptureTracks(page)).toBe(1);
     expect(await capturedTracks(page)).toBe(capturesBefore + 1);
-    const restoredFrom = Date.now() + 500;
-    await page.waitForTimeout(2_500);
-    const restored = await native.decodeFrom(admin.pubkey, restoredFrom);
-    expect(restored.frames).toBeGreaterThan(50);
-    expect(Math.abs(dominantFrequency(restored.samples) - ADMIN_TONE)).toBeLessThanOrEqual(10);
+    // Nothing is sent while the device is lost (asserted above), so every frame in
+    // a trailing 2 s window comes from the reopened capture. Wait for that window
+    // to carry the tone instead of sampling one fixed window: a freshly opened
+    // capture's audio processing can start late on a loaded host. The latency is
+    // recorded so a slow recovery stays visible.
+    const retriedAt = Date.now();
+    const peer = native;
+    let restored = await peer.decodeFrom(admin.pubkey, retriedAt);
+    await expect
+      .poll(
+        async () => {
+          restored = await peer.decodeFrom(admin.pubkey, Date.now() - 2_000);
+          return (
+            restored.frames > 50 && Math.abs(dominantFrequency(restored.samples) - ADMIN_TONE) <= 10
+          );
+        },
+        { timeout: 15_000, intervals: [250] },
+      )
+      .toBe(true);
+    const restoredAfterMs = Date.now() - retriedAt;
 
     // Reconnect: the network drops for ~3 s; the same capture resumes on a new socket.
     const capturesBeforeDrop = await capturedTracks(page);
@@ -310,6 +325,7 @@ test("mute, removed device, deafen and reconnect keep audio and capture consiste
       undeafenedProminenceDb: undeafened[NATIVE_TONE],
       framesWhileDeviceLost: whileLost.frames,
       framesAfterRetry: restored.frames,
+      restoredAfterMs,
       socketsOpened: relaySockets.length,
       framesAfterReconnect: reconnected.frames,
       captureTracksOpened: await capturedTracks(page),

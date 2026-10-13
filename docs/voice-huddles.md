@@ -52,5 +52,7 @@ validate physical microphones, speakers, echo cancellation quality or human list
 ## Verification
 - Frozen witness: `web/tests/e2e/live-voice.spec.ts` (`playwright.live-voice.config.ts`).
 - Recovery + Firefox: `web/tests/e2e/live-voice-controls.spec.ts` (`playwright.live-voice-controls.config.ts`),
-  same environment variables as the witness.
+  same environment variables as the witness. Firefox only starts an `AudioContext` with a working
+  audio backend; on a headless host run a user PulseAudio with `module-null-sink` and export
+  `PULSE_SERVER=unix:<socket>` (the test fails fast with an explicit message otherwise).
 - Unit: `npx vitest run src/features/voice`.
