@@ -1,10 +1,8 @@
-import { AlertTriangle, Hash, LoaderCircle, Lock, Menu, Users } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import buzzAppIcon from "@/assets/app-icon@3x.png";
-import { AgentsView } from "@/features/agents/ui/AgentsView";
-import { useRelayAgents } from "@/features/agents/use-relay-agents";
-import { channelDisplayName, threadReference } from "@/features/chat/lib/chat-model";
+import { channelDisplayName } from "@/features/chat/lib/chat-model";
 import type { BuzzChannel, TimelineMessage } from "@/features/chat/lib/chat-types";
 import { conversationDraftKey } from "@/features/chat/lib/conversation-drafts";
 import { useBuzzSession } from "@/features/chat/lib/use-buzz-session";
@@ -14,124 +12,77 @@ import {
   type WorkspaceContextValue,
   WorkspaceProvider,
 } from "@/features/chat/lib/workspace-context";
-import {
-  isEditableShortcutTarget,
-  resolveWorkspaceShortcut,
-} from "@/features/chat/lib/workspace-shortcuts";
-import { AgentActivityIndicator } from "@/features/chat/ui/AgentActivityIndicator";
 import { AgentActivityPanel } from "@/features/chat/ui/AgentActivityPanel";
-import { SearchDialog } from "@/features/chat/ui/AppDialogs";
-import { AppNavigation } from "@/features/chat/ui/AppNavigation";
-import {
-  ArchiveChannelDialog,
-  ChannelBrowserDialog,
-} from "@/features/chat/ui/ChannelBrowserDialog";
+import { AppNavigation, type ChannelRowActions } from "@/features/chat/ui/AppNavigation";
 import { ChannelDetailsPanel } from "@/features/chat/ui/ChannelDetailsPanel";
-import { ChannelHeaderActions } from "@/features/chat/ui/ChannelHeaderActions";
-import { FeatureToolView } from "@/features/chat/ui/FeatureToolView";
 import { IdentityGate } from "@/features/chat/ui/IdentityGate";
 import { useLeftPanelWidth } from "@/features/chat/ui/LeftPanelSizing";
-import { MemberDialog } from "@/features/chat/ui/MemberPanel";
-import { MessageComposer } from "@/features/chat/ui/MessageComposer";
-import { DeleteMessageDialog, EditMessageDialog } from "@/features/chat/ui/MessageDialogs";
-import { MessageList } from "@/features/chat/ui/MessageList";
-import { NewDmView } from "@/features/chat/ui/NewDmView";
-import { SettingsView } from "@/features/chat/ui/SettingsDialog";
 import { ThreadPanel } from "@/features/chat/ui/ThreadPanel";
-import { ChannelHeaderExtras, ChannelSurfaceExtras } from "@/features/chat/ui/WorkspaceExtensions";
-import { type WorkspaceTool, WorkspaceToolPanel } from "@/features/chat/ui/WorkspaceToolPanel";
-import { addCommunityMember, mintCommunityInvite } from "@/features/community/invite-api";
-import { CommunityInviteDialog } from "@/features/community/ui/CommunityInviteDialog";
+import { WorkspaceBackgroundExtras } from "@/features/chat/ui/WorkspaceExtensions";
+import { requestForumFocus } from "@/features/forums/lib/forum-focus";
 import type { InboxItem } from "@/features/inbox/lib/inbox-model";
-import { InboxView } from "@/features/inbox/ui/InboxView";
 import { useInbox } from "@/features/inbox/use-inbox";
-import { ReposPanel } from "@/features/repos/ui/ReposPanel";
+import { buildBuzzDeepLink } from "@/features/push/lib/deep-link";
+import { retirePushEnrollment } from "@/features/push/lib/push-enrollment";
+import { useDueReminderCount } from "@/features/reminders/lib/use-reminders";
+import { useDisplayPreferences } from "@/features/workspace/lib/display-preferences";
+import type { SavedCommunity } from "@/features/workspace/lib/saved-communities";
+import { useCommunities } from "@/features/workspace/lib/use-communities";
+import { useWorkspaceClient } from "@/features/workspace/lib/use-workspace-client";
+import { useWorkspacePanels } from "@/features/workspace/lib/use-workspace-panels";
+import { useWorkspaceShortcutHandler } from "@/features/workspace/lib/use-workspace-shortcut-handler";
+import { ChannelSurface } from "@/features/workspace/ui/ChannelSurface";
+import type { CommunityControls } from "@/features/workspace/ui/CommunityRail";
+import { ToolHost } from "@/features/workspace/ui/ToolHost";
+import { type WorkspaceDialog, WorkspaceDialogs } from "@/features/workspace/ui/WorkspaceDialogs";
 import { clearMediaObjectUrls } from "@/shared/api/media-client";
-import { BuzzRelayClient } from "@/shared/api/relay-client";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/shared/config/runtime-config";
 import { resolveRelayFeatures } from "@/shared/features/relay-features";
 import { t } from "@/shared/i18n";
 import { useRightPanelWidth } from "@/shared/ui/right-panel-sizing";
 
-type DialogName = "browse" | "search" | "invite" | null;
+type CommunityActions = {
+  controls: Omit<CommunityControls, "onAdd" | "onRemove">;
+  add: (input: { name: string; relayUrl: string }) => void;
+  remove: (id: string) => void;
+};
+
+function latestTimestamp(messages: TimelineMessage[], rootId: string | null): number {
+  return messages
+    .filter((message) => message.rootId === rootId)
+    .reduce((timestamp, message) => Math.max(timestamp, message.event.created_at), 0);
+}
 
 function Workspace({
   config,
   pubkey,
   demo,
   signOut,
+  communities,
 }: {
   config: RuntimeConfig;
   pubkey: string;
   demo: boolean;
   signOut: () => void;
+  communities: CommunityActions;
 }) {
-  const client = useMemo(
-    () => (demo ? null : new BuzzRelayClient(config.relayUrl)),
-    [config.relayUrl, demo],
-  );
+  const flushBeforeDispose = useRef<() => Promise<void>>(async () => undefined);
+  const client = useWorkspaceClient(config.relayUrl, demo, flushBeforeDispose);
   const session = useBuzzSession({ client, config, pubkey, demo });
   const { state, selectedChannel } = session;
-  const userState = useRelayUserState({
-    client,
-    demo,
-    relayUrl: config.relayUrl,
-    pubkey,
-  });
-  const [activeTool, setActiveTool] = useState<WorkspaceTool | null>(null);
-  const [dialog, setDialog] = useState<DialogName>(null);
-  const [searchChannelId, setSearchChannelId] = useState<string | null>(null);
-  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-  const [threadRootId, setThreadRootId] = useState<string | null>(null);
-  const [threadReplyTargetId, setThreadReplyTargetId] = useState<string | null>(null);
-  const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
-  const [channelDetailsOpen, setChannelDetailsOpen] = useState(false);
-  const [activityPanelOpen, setActivityPanelOpen] = useState(false);
-  const [memberDialogOpen, setMemberDialogOpen] = useState(false);
-  const [channelBrowserInitialView, setChannelBrowserInitialView] = useState<"browse" | "create">(
-    "browse",
-  );
+  const userState = useRelayUserState({ client, demo, relayUrl: config.relayUrl, pubkey });
+  flushBeforeDispose.current = userState.flush;
+  const { panels, ...panelActions } = useWorkspacePanels();
+  const { activeTool, threadRootId, threadReplyTargetId, focusedMessageId } = panels;
+  const { preferences, update: updatePreferences } = useDisplayPreferences();
+  const [dialog, setDialog] = useState<WorkspaceDialog | null>(null);
   const [insertMention, setInsertMention] = useState<string | null>(null);
   const [relayHasProjects, setRelayHasProjects] = useState(false);
-  const [archiveTarget, setArchiveTarget] = useState<BuzzChannel | null>(null);
-  const [editTarget, setEditTarget] = useState<TimelineMessage | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TimelineMessage | null>(null);
   const [unreadBoundaries, setUnreadBoundaries] = useState<Record<string, number>>({});
-  const [sidePanel, setSidePanel] = useState<ReactNode | null>(null);
-  const {
-    maximum: maximumNavigationWidth,
-    panelWidth: navigationWidth,
-    setPanelWidth: setNavigationWidth,
-  } = useLeftPanelWidth();
-  const {
-    maximum: maximumActivityWidth,
-    minimum: minimumActivityWidth,
-    panelWidth: activityPanelWidth,
-    setPanelWidth: setActivityPanelWidth,
-  } = useRightPanelWidth("activity");
-  const {
-    maximum: maximumChannelDetailsWidth,
-    minimum: minimumChannelDetailsWidth,
-    panelWidth: channelDetailsWidth,
-    setPanelWidth: setChannelDetailsWidth,
-  } = useRightPanelWidth("channel");
-  const {
-    maximum: maximumThreadWidth,
-    minimum: minimumThreadWidth,
-    panelWidth: threadPanelWidth,
-    setPanelWidth: setThreadPanelWidth,
-  } = useRightPanelWidth("thread");
-  const relayAgents = useRelayAgents({
-    client,
-    demo,
-    agentControlUrl: config.agentControlUrl,
-    configuredAgents: config.agents,
-    channels: state.channels,
-    profiles: state.profiles,
-    presence: state.presence,
-    ensureProfiles: session.ensureProfiles,
-    refreshChannels: session.refreshChannels,
-  });
+  const navigation = useLeftPanelWidth();
+  const activityWidth = useRightPanelWidth("activity");
+  const detailsWidth = useRightPanelWidth("channel");
+  const threadWidth = useRightPanelWidth("thread");
   const inbox = useInbox({
     client,
     demo,
@@ -143,50 +94,54 @@ function Workspace({
     readContexts: userState.contexts,
     markContextRead: userState.markContextRead,
   });
+  const dueReminderCount = useDueReminderCount(config.relayUrl, pubkey);
   const threadRoot = state.messages.find((message) => message.event.id === threadRootId) ?? null;
   const threadReplyTarget =
     state.messages.find((message) => message.event.id === threadReplyTargetId) ?? null;
   const canCreateChannel = state.communityRole === "owner" || state.communityRole === "admin";
-  const selectedRole = selectedChannel?.members.find(
-    (member) => member.pubkey.toLowerCase() === pubkey.toLowerCase(),
-  )?.role;
-  const canManageChannel = canCreateChannel || selectedRole === "owner" || selectedRole === "admin";
+  const canManage = useCallback(
+    (channel: BuzzChannel) => {
+      if (canCreateChannel) return true;
+      const role = channel.members.find(
+        (member) => member.pubkey.toLowerCase() === pubkey.toLowerCase(),
+      )?.role;
+      return role === "owner" || role === "admin";
+    },
+    [canCreateChannel, pubkey],
+  );
+  const canManageChannel = selectedChannel ? canManage(selectedChannel) : false;
   const connected = state.connectionState === "connected";
   const features = resolveRelayFeatures(config.features, {
     projects: relayHasProjects,
     forum: state.channels.some((channel) => channel.type === "forum"),
   });
+  const isAgentMember = useCallback(
+    (member: BuzzChannel["members"][number]) =>
+      member.role === "bot" || state.profiles[member.pubkey.toLowerCase()]?.isAgent === true,
+    [state.profiles],
+  );
   const channelAgentPubkeys = useMemo(
     () =>
-      selectedChannel?.members
-        .filter(
-          (member) =>
-            member.role === "bot" || state.profiles[member.pubkey.toLowerCase()]?.isAgent === true,
-        )
-        .map((member) => member.pubkey.toLowerCase()) ?? [],
-    [selectedChannel?.members, state.profiles],
+      selectedChannel?.members.filter(isAgentMember).map((member) => member.pubkey.toLowerCase()) ??
+      [],
+    [isAgentMember, selectedChannel?.members],
   );
   const knownAgentPubkeys = useMemo(
     () => [
       ...new Set(
         state.channels.flatMap((channel) =>
-          channel.members
-            .filter(
-              (member) =>
-                member.role === "bot" ||
-                state.profiles[member.pubkey.toLowerCase()]?.isAgent === true,
-            )
-            .map((member) => member.pubkey.toLowerCase()),
+          channel.members.filter(isAgentMember).map((member) => member.pubkey.toLowerCase()),
         ),
       ),
     ],
-    [state.channels, state.profiles],
+    [isAgentMember, state.channels],
   );
   const liveAgentActivity = useLiveAgentActivity({
     client,
     demo,
     knownAgentPubkeys,
     ownerPubkey: pubkey,
+    channels: state.channels,
   });
   const activityStatuses = selectedChannel
     ? liveAgentActivity.statusesFor(selectedChannel.id, channelAgentPubkeys)
@@ -194,14 +149,6 @@ function Workspace({
   const activityItems = selectedChannel
     ? liveAgentActivity.itemsFor(selectedChannel.id, channelAgentPubkeys)
     : [];
-  const sendMessage = useCallback(
-    async (content: string, attachments: Parameters<typeof session.sendMessage>[1]) => {
-      if (!selectedChannel) return;
-      await session.sendMessage(content, attachments);
-      liveAgentActivity.markSubmitted(selectedChannel.id, channelAgentPubkeys);
-    },
-    [channelAgentPubkeys, liveAgentActivity, selectedChannel, session],
-  );
 
   useEffect(() => {
     if (!client || demo || config.features.projects || !connected) return;
@@ -229,9 +176,7 @@ function Workspace({
         ? { ...current, [channelId]: userState.contexts[channelId] ?? 0 }
         : current,
     );
-    const latest = state.messages
-      .filter((message) => !message.rootId)
-      .reduce((timestamp, message) => Math.max(timestamp, message.event.created_at), 0);
+    const latest = latestTimestamp(state.messages, null);
     if (latest > 0) inbox.markChannelRead(channelId, latest);
   }, [
     activeTool,
@@ -244,13 +189,15 @@ function Workspace({
 
   useEffect(() => {
     if (!threadRootId || activeTool || !userState.hydrated) return;
-    const latest = state.messages
-      .filter((message) => message.rootId === threadRootId)
-      .reduce((timestamp, message) => Math.max(timestamp, message.event.created_at), 0);
+    const latest = latestTimestamp(state.messages, threadRootId);
     if (latest > 0) inbox.markThreadRead(threadRootId, latest);
   }, [activeTool, inbox.markThreadRead, state.messages, threadRootId, userState.hydrated]);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    // Retire this browser's push lease while the signer can still sign it.
+    await retirePushEnrollment({ client, relayUrl: config.relayUrl, pubkey }).catch(
+      () => undefined,
+    );
     client?.disconnect();
     clearMediaObjectUrls();
     signOut();
@@ -260,185 +207,69 @@ function Workspace({
       ...current,
       [channelId]: userState.contexts[channelId] ?? 0,
     }));
-    setActiveTool(null);
-    setThreadRootId(null);
-    setThreadReplyTargetId(null);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(false);
-    setMemberDialogOpen(false);
-    setFocusedMessageId(null);
+    panelActions.resetForChannel();
+    setDialog(null);
     session.selectChannel(channelId);
   };
-  const toggleTool = (tool: WorkspaceTool) => {
-    setActiveTool((current) => (current === tool ? null : tool));
-    setThreadRootId(null);
-    setThreadReplyTargetId(null);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(false);
-    setMemberDialogOpen(false);
-    setMobileNavigationOpen(false);
-    setFocusedMessageId(null);
-  };
-  const showMessages = () => {
-    setActiveTool(null);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(false);
-    setMobileNavigationOpen(false);
-    setFocusedMessageId(null);
-  };
   const revealMessage = (channelId: string, eventId: string, threadId: string | null) => {
-    setActiveTool(null);
-    setMobileNavigationOpen(false);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(false);
-    setMemberDialogOpen(false);
-    setThreadRootId(threadId);
-    setThreadReplyTargetId(null);
-    setFocusedMessageId(eventId);
+    setDialog(null);
+    if (state.channels.find((channel) => channel.id === channelId)?.type === "forum") {
+      // Forum topics open inside the forum view, never the timeline thread panel.
+      selectChannel(channelId);
+      requestForumFocus(channelId, eventId);
+      return;
+    }
+    panelActions.reveal(eventId, threadId);
     session.revealMessage({ channelId, eventId, threadRootId: threadId });
   };
   const openInboxConversation = (item: InboxItem) => {
-    if (!item.channelId) return;
-    revealMessage(item.channelId, item.event.id, item.threadRootId);
+    if (item.channelId) revealMessage(item.channelId, item.event.id, item.threadRootId);
   };
-  const openAgentDm = async (targetPubkey: string) => {
+  const openDm = async (targetPubkey: string) => {
     try {
       await session.openDm(targetPubkey);
-      setActiveTool(null);
-      setThreadRootId(null);
-      setThreadReplyTargetId(null);
-      setChannelDetailsOpen(false);
-      setActivityPanelOpen(false);
-      setMemberDialogOpen(false);
-      setFocusedMessageId(null);
+      panelActions.resetForChannel();
+      setDialog(null);
     } catch (openError) {
       toast.error(openError instanceof Error ? openError.message : t("error.dmOpen"));
     }
   };
-  const openThread = (message: TimelineMessage, reply: boolean) => {
-    setActiveTool(null);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(false);
-    setThreadRootId(message.event.id);
-    setThreadReplyTargetId(reply ? message.event.id : null);
-    setFocusedMessageId(null);
-  };
-  const toggleChannelDetails = () => {
-    setActiveTool(null);
-    setThreadRootId(null);
-    setThreadReplyTargetId(null);
-    setActivityPanelOpen(false);
-    setChannelDetailsOpen((open) => !open);
-  };
-  const openActivityPanel = () => {
-    setActiveTool(null);
-    setThreadRootId(null);
-    setThreadReplyTargetId(null);
-    setChannelDetailsOpen(false);
-    setActivityPanelOpen(true);
-  };
-  const openChannelBrowser = useCallback((initialView: "browse" | "create" = "browse") => {
-    setChannelBrowserInitialView(initialView);
-    setDialog("browse");
-  }, []);
+  const openSearch = (channelId: string | null) => setDialog({ kind: "search", channelId });
+  const copyText = (text: string, success: string) =>
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => toast.success(success))
+      .catch(() => toast.error(t("workspace.copyFailed")));
 
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const shortcut = resolveWorkspaceShortcut(event, isEditableShortcutTarget(event.target));
-      if (!shortcut) return;
-      if (
-        dialog ||
-        memberDialogOpen ||
-        archiveTarget ||
-        editTarget ||
-        deleteTarget ||
-        mobileNavigationOpen
-      ) {
-        return;
+  useWorkspaceShortcutHandler(dialog !== null || panels.mobileNavigationOpen, (shortcut) => {
+    if (shortcut === "search") openSearch(null);
+    else if (shortcut === "search-channel") {
+      if (!selectedChannel || activeTool) return false;
+      openSearch(selectedChannel.id);
+    } else if (shortcut === "settings") panelActions.openTool("settings");
+    else if (shortcut === "browse-channels") setDialog({ kind: "browse", initialView: "browse" });
+    else if (shortcut === "create-channel") {
+      if (!canCreateChannel) return false;
+      setDialog({ kind: "browse", initialView: "create" });
+    } else if (shortcut === "new-dm") panelActions.openTool("new-dm");
+    else if (shortcut === "mark-all-read") inbox.markAllRead();
+    else if (shortcut === "mark-current-read") {
+      if (!selectedChannel || activeTool) return false;
+      const latestChannelMessage = latestTimestamp(state.messages, null);
+      if (latestChannelMessage > 0) inbox.markChannelRead(selectedChannel.id, latestChannelMessage);
+      if (threadRootId) {
+        const latestThreadMessage = latestTimestamp(state.messages, threadRootId);
+        if (latestThreadMessage > 0) inbox.markThreadRead(threadRootId, latestThreadMessage);
       }
-
-      let handled = true;
-      if (shortcut === "search") {
-        setSearchChannelId(null);
-        setDialog("search");
-      } else if (shortcut === "search-channel") {
-        if (!selectedChannel || activeTool) handled = false;
-        else {
-          setSearchChannelId(selectedChannel.id);
-          setDialog("search");
-        }
-      } else if (shortcut === "settings") {
-        setActiveTool("settings");
-        setThreadRootId(null);
-        setThreadReplyTargetId(null);
-        setChannelDetailsOpen(false);
-        setActivityPanelOpen(false);
-        setMemberDialogOpen(false);
-        setMobileNavigationOpen(false);
-        setFocusedMessageId(null);
-      } else if (shortcut === "browse-channels") {
-        openChannelBrowser();
-      } else if (shortcut === "create-channel") {
-        if (!canCreateChannel) handled = false;
-        else openChannelBrowser("create");
-      } else if (shortcut === "new-dm") {
-        setActiveTool("new-dm");
-        setThreadRootId(null);
-        setThreadReplyTargetId(null);
-        setChannelDetailsOpen(false);
-        setActivityPanelOpen(false);
-        setMemberDialogOpen(false);
-        setMobileNavigationOpen(false);
-        setFocusedMessageId(null);
-      } else if (shortcut === "mark-all-read") {
-        inbox.markAllRead();
-      } else if (shortcut === "mark-current-read") {
-        if (!selectedChannel || activeTool) handled = false;
-        else {
-          const latestChannelMessage = state.messages
-            .filter((message) => !message.rootId)
-            .reduce((timestamp, message) => Math.max(timestamp, message.event.created_at), 0);
-          if (latestChannelMessage > 0) {
-            inbox.markChannelRead(selectedChannel.id, latestChannelMessage);
-          }
-          if (threadRootId) {
-            const latestThreadMessage = state.messages
-              .filter((message) => message.rootId === threadRootId)
-              .reduce((timestamp, message) => Math.max(timestamp, message.event.created_at), 0);
-            if (latestThreadMessage > 0) {
-              inbox.markThreadRead(threadRootId, latestThreadMessage);
-            }
-          }
-        }
-      }
-
-      if (handled) event.preventDefault();
-    };
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [
-    activeTool,
-    archiveTarget,
-    canCreateChannel,
-    deleteTarget,
-    dialog,
-    editTarget,
-    inbox.markAllRead,
-    inbox.markChannelRead,
-    inbox.markThreadRead,
-    memberDialogOpen,
-    mobileNavigationOpen,
-    openChannelBrowser,
-    selectedChannel,
-    state.messages,
-    threadRootId,
-  ]);
+    }
+    return true;
+  });
 
   const displayName = selectedChannel
     ? channelDisplayName(selectedChannel, state.profiles, pubkey)
     : "Buzz";
-  const searchChannel = state.channels.find((channel) => channel.id === searchChannelId) ?? null;
+  const channelLabel =
+    selectedChannel?.type === "dm" ? displayName : `#${selectedChannel ? displayName : ""}`;
   const typingNames = state.typingPubkeys
     .filter(
       (typingPubkey) =>
@@ -446,6 +277,30 @@ function Workspace({
     )
     .map((typingPubkey) => state.profiles[typingPubkey]?.name)
     .filter((name): name is string => Boolean(name));
+  const threadFocused = Boolean(threadRoot) && preferences.threadLayout === "focus";
+
+  const channelActions: ChannelRowActions = {
+    canManage,
+    canMarkUnread: inbox.canMarkChannelUnread,
+    markRead: (channelId) => inbox.markChannelRead(channelId, Math.floor(Date.now() / 1_000)),
+    markUnread: inbox.markChannelUnread,
+    toggleStar: (channelId) =>
+      userState.setChannelStarred(channelId, !userState.starredChannelIds.has(channelId)),
+    toggleMute: (channelId) =>
+      userState.setChannelMuted(channelId, !userState.mutedChannelIds.has(channelId)),
+    copyLink: (channelId) =>
+      copyText(
+        buildBuzzDeepLink({ relayUrl: config.relayUrl, channelId }),
+        t("workspace.sidebar.linkCopied"),
+      ),
+    copyId: (channelId) => copyText(channelId, t("workspace.sidebar.idCopied")),
+    openDetails: (channelId) => {
+      if (state.selectedChannelId !== channelId) selectChannel(channelId);
+      panelActions.toggleChannelDetails();
+    },
+    leave: (channel) => setDialog({ kind: "leave", channel }),
+    archive: (channel) => setDialog({ kind: "archive", channel }),
+  };
 
   const workspaceContext: WorkspaceContextValue = {
     client,
@@ -456,275 +311,148 @@ function Workspace({
     connected,
     channels: state.channels,
     profiles: state.profiles,
+    presence: state.presence,
     selectedChannel,
     canManageSelectedChannel: canManageChannel,
     ensureProfiles: session.ensureProfiles,
+    refreshChannels: session.refreshChannels,
     selectChannel,
     revealMessage,
-    showSidePanel: (panel) => {
-      if (panel) {
-        setActiveTool(null);
-        setThreadRootId(null);
-        setThreadReplyTargetId(null);
-        setChannelDetailsOpen(false);
-        setActivityPanelOpen(false);
-      }
-      setSidePanel(panel);
-    },
+    showSidePanel: panelActions.showSidePanel,
+    readContexts: userState.contexts,
+    markContextRead: userState.markContextRead,
+    mutedChannelIds: userState.mutedChannelIds,
   };
 
   return (
     <WorkspaceProvider value={workspaceContext}>
-      <div className="buzz-app-surface flex h-dvh min-h-0 w-full overflow-hidden pb-14 md:p-1.5 md:pb-1.5">
+      <WorkspaceBackgroundExtras />
+      <div className="buzz-app-surface flex h-dvh min-h-0 w-full overflow-hidden pb-14 md:pb-0">
         <AppNavigation
           activeTool={activeTool}
           canCreateChannel={canCreateChannel}
           canManageMembers={canCreateChannel}
+          channelActions={channelActions}
           channels={state.channels}
+          channelUnreadCounts={inbox.channelUnreadCounts}
+          communities={{
+            ...communities.controls,
+            onAdd: () => setDialog({ kind: "add-community" }),
+            onRemove: (community) => setDialog({ kind: "remove-community", community }),
+          }}
           communityName={config.communityName}
           connectionState={state.connectionState}
           currentPubkey={pubkey}
-          channelUnreadCounts={inbox.channelUnreadCounts}
-          inboxUnreadCount={inbox.unreadCount}
           features={features}
-          mobileOpen={mobileNavigationOpen}
-          maximumWidth={maximumNavigationWidth}
-          panelWidth={navigationWidth}
-          profiles={state.profiles}
+          inboxUnreadCount={inbox.unreadCount + dueReminderCount}
+          maximumWidth={navigation.maximum}
+          mobileOpen={panels.mobileNavigationOpen}
+          mutedChannelIds={userState.mutedChannelIds}
+          panelWidth={navigation.panelWidth}
           presence={state.presence}
+          profiles={state.profiles}
           relayUrl={config.relayUrl}
           selectedChannelId={state.selectedChannelId}
-          onCloseMobile={() => setMobileNavigationOpen(false)}
-          onBrowseChannels={() => openChannelBrowser()}
-          onInvite={() => setDialog("invite")}
-          onSwitchIdentity={handleSignOut}
-          onNewDm={() => toggleTool("new-dm")}
-          onShowMessages={showMessages}
-          onToggleTool={toggleTool}
-          onSearch={() => {
-            setSearchChannelId(null);
-            setDialog("search");
-          }}
-          onSelectChannel={selectChannel}
-          onSettings={() => toggleTool("settings")}
-          onResize={setNavigationWidth}
           starredChannelIds={userState.starredChannelIds}
-          mutedChannelIds={userState.mutedChannelIds}
+          tools={{
+            workflows: !demo,
+            pulse: !demo,
+            remote: !demo && Boolean(config.agentControlUrl),
+          }}
+          onBrowseChannels={() => setDialog({ kind: "browse", initialView: "browse" })}
+          onCloseMobile={() => panelActions.setMobileNavigationOpen(false)}
+          onInvite={() => setDialog({ kind: "invite" })}
+          onNewDm={() => panelActions.toggleTool("new-dm")}
+          onResize={navigation.setPanelWidth}
+          onSearch={() => openSearch(null)}
+          onSelectChannel={selectChannel}
+          onSettings={() => panelActions.toggleTool("settings")}
+          onShowMessages={panelActions.showMessages}
+          onSwitchIdentity={() => void handleSignOut()}
+          onToggleTool={panelActions.toggleTool}
         />
 
-        <section className="buzz-content-surface relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border">
-          {!activeTool ? (
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <header className="flex h-11 shrink-0 items-center gap-2 border-b px-2.5 sm:px-3">
-                <button
-                  aria-label={t("workspace.openChannels")}
-                  className="buzz-icon-button md:!hidden"
-                  title={t("common.channel")}
-                  type="button"
-                  onClick={() => setMobileNavigationOpen(true)}
-                >
-                  <Menu className="h-5 w-5" />
-                </button>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  {selectedChannel?.type === "dm" ? (
-                    <Users className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
-                  ) : (
-                    <Hash className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
-                  )}
-                  <h1 className="truncate text-[15px] font-semibold">{displayName}</h1>
-                  {selectedChannel?.visibility === "private" ? (
-                    <Lock
-                      className="h-3 w-3 shrink-0 text-muted-foreground"
-                      aria-label={t("common.private")}
-                    />
-                  ) : null}
-                </div>
-                {selectedChannel ? <ChannelHeaderExtras /> : null}
-                {selectedChannel ? (
-                  <ChannelHeaderActions
-                    detailsVisible={channelDetailsOpen}
-                    memberCount={selectedChannel.members.length}
-                    onSearch={() => {
-                      setSearchChannelId(selectedChannel.id);
-                      setDialog("search");
-                    }}
-                    onShowDetails={toggleChannelDetails}
-                    onShowMembers={() => setMemberDialogOpen(true)}
-                  />
-                ) : null}
-              </header>
-
-              {state.error ? (
-                <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/8 px-4 py-2 text-xs text-destructive">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{state.error}</span>
-                  {state.error.toLowerCase().includes("member") || state.error.includes("成员") ? (
-                    <button
-                      className="shrink-0 font-medium underline"
-                      type="button"
-                      onClick={handleSignOut}
-                    >
-                      {t("workspace.changeIdentity")}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {selectedChannel ? (
-                <>
-                  <ChannelSurfaceExtras />
-                  <MessageList
-                    canModerate={canManageChannel}
-                    currentPubkey={pubkey}
-                    focusedMessageId={focusedMessageId}
-                    loading={state.loadingMessages}
-                    messages={state.messages}
-                    presence={state.presence}
-                    profiles={state.profiles}
-                    relayUrl={config.relayUrl}
-                    unreadAfter={unreadBoundaries[selectedChannel.id] ?? null}
-                    onDelete={setDeleteTarget}
-                    onEdit={setEditTarget}
-                    onOpenThread={(message) => openThread(message, false)}
-                    onReact={session.addReaction}
-                    onReply={(message) => openThread(message, true)}
-                  />
-                  <AgentActivityIndicator
-                    itemCount={activityItems.length}
-                    profiles={state.profiles}
-                    statuses={activityStatuses}
-                    onOpen={openActivityPanel}
-                  />
-                  {typingNames.length ? (
-                    <div className="h-6 shrink-0 px-5 text-[11px] text-muted-foreground">
-                      {t("workspace.typing", { names: typingNames.slice(0, 3).join(", ") })}
-                    </div>
-                  ) : null}
-                  <MessageComposer
-                    key={selectedChannel.id}
-                    disabled={!connected}
-                    draftKey={conversationDraftKey(config.relayUrl, pubkey, selectedChannel.id)}
-                    insertMention={insertMention}
-                    members={selectedChannel.members}
-                    placeholder={t("workspace.sendTo", {
-                      target: selectedChannel.type === "dm" ? displayName : `#${displayName}`,
-                    })}
-                    profiles={state.profiles}
-                    relayUrl={config.relayUrl}
-                    onMentionInserted={() => setInsertMention(null)}
-                    onSend={sendMessage}
-                    onTyping={() => session.notifyTyping()}
-                  />
-                </>
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                  {state.loadingChannels ? (
-                    <>
-                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                      {t("workspace.loadingChannels")}
-                    </>
-                  ) : (
-                    t("workspace.noChannels")
-                  )}
-                </div>
-              )}
-            </main>
-          ) : null}
-
+        <section className="buzz-content-surface relative flex min-h-0 min-w-0 flex-1 overflow-hidden md:mb-2 md:mr-2 md:mt-2 md:rounded-2xl md:border">
           {activeTool ? (
-            <WorkspaceToolPanel tool={activeTool}>
-              {activeTool === "agents" ? (
-                <AgentsView
-                  agents={relayAgents.agents}
-                  channels={state.channels}
-                  error={relayAgents.error}
-                  loading={relayAgents.loading}
-                  pendingAction={relayAgents.pendingAction}
-                  startingPubkey={relayAgents.startingPubkey}
-                  profiles={state.profiles}
-                  relayUrl={config.relayUrl}
-                  onClose={() => setActiveTool(null)}
-                  onOpenDm={openAgentDm}
-                  onRefresh={() => void relayAgents.refresh()}
-                  onSetChannel={relayAgents.setAgentChannel}
-                  onStartAgent={relayAgents.startAgent}
-                />
-              ) : activeTool === "inbox" ? (
-                <InboxView
-                  approvalPending={inbox.approvalPending}
-                  channels={state.channels}
-                  error={inbox.error}
-                  items={inbox.items}
-                  loading={inbox.loading}
-                  profiles={state.profiles}
-                  relayUrl={config.relayUrl}
-                  onClose={() => setActiveTool(null)}
-                  onMarkAllRead={inbox.markAllRead}
-                  onMarkRead={inbox.markRead}
-                  onMarkUnread={inbox.markUnread}
-                  onOpenConversation={openInboxConversation}
-                  onRefresh={() => void inbox.refresh()}
-                  onRespondToApproval={(item, approved) =>
-                    inbox.respondToApproval(item.event, approved)
-                  }
-                />
-              ) : activeTool === "new-dm" ? (
-                <NewDmView
-                  currentPubkey={pubkey}
-                  profiles={state.profiles}
-                  relayUrl={config.relayUrl}
-                  onClose={() => setActiveTool(null)}
-                  onOpen={openAgentDm}
-                />
-              ) : activeTool === "repos" ? (
-                <ReposPanel
-                  demo={demo}
-                  profiles={state.profiles}
-                  relayUrl={config.relayUrl}
-                  onClose={() => setActiveTool(null)}
-                  onOpenChannel={selectChannel}
-                />
-              ) : activeTool === "settings" ? (
-                <SettingsView
-                  canInvite={canCreateChannel}
-                  connectionState={state.connectionState}
-                  profile={
-                    state.profiles[pubkey] ?? {
-                      pubkey,
-                      name: pubkey.slice(0, 12),
-                      about: "",
-                      picture: null,
-                      isAgent: false,
-                    }
-                  }
-                  pubkey={pubkey}
-                  relayUrl={config.relayUrl}
-                  onClose={() => setActiveTool(null)}
-                  onOpenInvites={() => setDialog("invite")}
-                  onSwitchIdentity={handleSignOut}
-                  onUpdateProfile={session.updateProfile}
-                />
-              ) : (
-                <FeatureToolView tool={activeTool} onClose={() => setActiveTool(null)} />
-              )}
-            </WorkspaceToolPanel>
-          ) : sidePanel ? (
-            sidePanel
-          ) : selectedChannel && activityPanelOpen ? (
+            <ToolHost
+              canInvite={canCreateChannel}
+              inbox={inbox}
+              pubkey={pubkey}
+              session={session}
+              tool={activeTool}
+              onClose={panelActions.closeTool}
+              onOpenChannel={selectChannel}
+              onOpenDm={openDm}
+              onOpenInboxItem={openInboxConversation}
+              onOpenInvites={() => setDialog({ kind: "invite" })}
+              onSwitchIdentity={() => void handleSignOut()}
+            />
+          ) : (
+            <ChannelSurface
+              activity={{ itemCount: activityItems.length, statuses: activityStatuses }}
+              canManageChannel={canManageChannel}
+              channel={selectedChannel}
+              connected={connected}
+              detailsVisible={panels.channelDetailsOpen}
+              displayName={displayName}
+              focusedMessageId={threadRoot ? null : focusedMessageId}
+              hidden={threadFocused}
+              insertMention={insertMention}
+              pubkey={pubkey}
+              relayUrl={config.relayUrl}
+              state={state}
+              typingNames={typingNames}
+              unreadAfter={selectedChannel ? (unreadBoundaries[selectedChannel.id] ?? null) : null}
+              onAddAgent={() =>
+                selectedChannel && setDialog({ kind: "add-agent", channelId: selectedChannel.id })
+              }
+              onAddPeople={() =>
+                selectedChannel &&
+                setDialog({ kind: "members", channelId: selectedChannel.id, addOpen: true })
+              }
+              onChangeIdentity={() => void handleSignOut()}
+              onDelete={(message) => setDialog({ kind: "delete", message })}
+              onEdit={(message) => setDialog({ kind: "edit", message })}
+              onMentionInserted={() => setInsertMention(null)}
+              onOpenActivity={panelActions.openActivityPanel}
+              onOpenNavigation={() => panelActions.setMobileNavigationOpen(true)}
+              onOpenThread={(message, reply) =>
+                panelActions.openThread(message.event.id, reply ? message.event.id : null)
+              }
+              onReact={session.addReaction}
+              onSearchChannel={() => selectedChannel && openSearch(selectedChannel.id)}
+              onSend={async (content, attachments, extras) => {
+                if (!selectedChannel) return;
+                await session.sendMessage(content, attachments, null, extras);
+                liveAgentActivity.markSubmitted(selectedChannel.id, channelAgentPubkeys);
+              }}
+              onShowMembers={() =>
+                selectedChannel &&
+                setDialog({ kind: "members", channelId: selectedChannel.id, addOpen: false })
+              }
+              onToggleDetails={panelActions.toggleChannelDetails}
+              onTyping={() => session.notifyTyping()}
+            />
+          )}
+
+          {activeTool ? null : panels.sidePanel ? (
+            panels.sidePanel
+          ) : selectedChannel && panels.activityPanelOpen ? (
             <AgentActivityPanel
               items={activityItems}
-              maximumWidth={maximumActivityWidth}
-              minimumWidth={minimumActivityWidth}
-              panelWidth={activityPanelWidth}
+              maximumWidth={activityWidth.maximum}
+              minimumWidth={activityWidth.minimum}
+              panelWidth={activityWidth.panelWidth}
               profiles={state.profiles}
               statuses={activityStatuses}
-              onClose={() => setActivityPanelOpen(false)}
-              onResize={setActivityPanelWidth}
+              onClose={panelActions.closeActivityPanel}
+              onResize={activityWidth.setPanelWidth}
             />
           ) : threadRoot ? (
             <ThreadPanel
               key={`${threadRoot.event.id}:${threadReplyTargetId ?? "thread"}`}
               canModerate={canManageChannel}
+              channelLabel={channelLabel}
               currentPubkey={pubkey}
               disabled={!connected}
               draftKey={conversationDraftKey(
@@ -733,31 +461,38 @@ function Workspace({
                 selectedChannel?.id ?? "",
                 threadRoot.event.id,
               )}
-              maximumWidth={maximumThreadWidth}
-              messages={state.messages}
-              members={selectedChannel?.members ?? []}
-              initialReplyTarget={threadReplyTarget}
               focusedMessageId={focusedMessageId}
-              minimumWidth={minimumThreadWidth}
-              panelWidth={threadPanelWidth}
+              initialReplyTarget={threadReplyTarget}
+              layout={preferences.threadLayout}
+              maximumWidth={threadWidth.maximum}
+              members={selectedChannel?.members ?? []}
+              messages={state.messages}
+              minimumWidth={threadWidth.minimum}
+              panelWidth={threadWidth.panelWidth}
               presence={state.presence}
               profiles={state.profiles}
               relayUrl={config.relayUrl}
               root={threadRoot}
-              onClose={() => {
-                setThreadRootId(null);
-                setThreadReplyTargetId(null);
-                setFocusedMessageId(null);
-              }}
-              onDelete={setDeleteTarget}
-              onEdit={setEditTarget}
+              onClose={panelActions.closeThread}
+              onDelete={(message) => setDialog({ kind: "delete", message })}
+              onEdit={(message) => setDialog({ kind: "edit", message })}
               onReact={session.addReaction}
-              onResize={setThreadPanelWidth}
-              onSend={(content, attachments, replyTarget) =>
-                session.sendMessage(content, attachments, {
-                  id: replyTarget.event.id,
-                  rootId: threadRoot.event.id,
-                  authorPubkey: replyTarget.event.pubkey,
+              onResize={threadWidth.setPanelWidth}
+              onSend={(content, attachments, replyTarget, extras) =>
+                session.sendMessage(
+                  content,
+                  attachments,
+                  {
+                    id: replyTarget.event.id,
+                    rootId: threadRoot.event.id,
+                    authorPubkey: replyTarget.event.pubkey,
+                  },
+                  extras,
+                )
+              }
+              onToggleLayout={() =>
+                updatePreferences({
+                  threadLayout: preferences.threadLayout === "focus" ? "split" : "focus",
                 })
               }
               onTyping={(replyTarget) =>
@@ -768,136 +503,45 @@ function Workspace({
                 })
               }
             />
-          ) : selectedChannel && channelDetailsOpen ? (
+          ) : selectedChannel && panels.channelDetailsOpen ? (
             <ChannelDetailsPanel
               canArchive={canManageChannel && selectedChannel.type !== "dm"}
               channel={selectedChannel}
               loading={state.loadingChannels}
-              maximumWidth={maximumChannelDetailsWidth}
-              minimumWidth={minimumChannelDetailsWidth}
+              maximumWidth={detailsWidth.maximum}
+              minimumWidth={detailsWidth.minimum}
               muted={userState.mutedChannelIds.has(selectedChannel.id)}
-              panelWidth={channelDetailsWidth}
+              panelWidth={detailsWidth.panelWidth}
               starred={userState.starredChannelIds.has(selectedChannel.id)}
-              onArchive={() => setArchiveTarget(selectedChannel)}
-              onClose={() => setChannelDetailsOpen(false)}
+              onArchive={() => setDialog({ kind: "archive", channel: selectedChannel })}
+              onClose={panelActions.closeChannelDetails}
               onRefresh={() => void session.refreshChannels()}
-              onResize={setChannelDetailsWidth}
-              onToggleMuted={() =>
-                userState.setChannelMuted(
-                  selectedChannel.id,
-                  !userState.mutedChannelIds.has(selectedChannel.id),
-                )
-              }
-              onToggleStarred={() =>
-                userState.setChannelStarred(
-                  selectedChannel.id,
-                  !userState.starredChannelIds.has(selectedChannel.id),
-                )
-              }
+              onResize={detailsWidth.setPanelWidth}
+              onToggleMuted={() => channelActions.toggleMute(selectedChannel.id)}
+              onToggleStarred={() => channelActions.toggleStar(selectedChannel.id)}
             />
           ) : null}
         </section>
 
-        {dialog === "browse" ? (
-          <ChannelBrowserDialog
-            key={channelBrowserInitialView}
-            allowForum={features.forum}
-            canCreate={canCreateChannel}
-            channels={session.discoveredChannels}
-            currentPubkey={pubkey}
-            initialView={channelBrowserInitialView}
-            onClose={() => setDialog(null)}
-            onCreate={session.createChannel}
-            onJoin={session.joinChannel}
-            onSelect={selectChannel}
-            onSetArchived={session.setChannelArchived}
-          />
-        ) : null}
-        {dialog === "search" ? (
-          <SearchDialog
-            channels={state.channels}
-            profiles={state.profiles}
-            onClose={() => setDialog(null)}
-            onSearch={session.search}
-            onSelect={(hit) => {
-              const reference = threadReference(hit.event);
-              revealMessage(hit.channelId, hit.event.id, reference.rootId);
-            }}
-            onSelectChannel={selectChannel}
-            onBrowseChannels={() => openChannelBrowser()}
-            onCreateChannel={canCreateChannel ? () => openChannelBrowser("create") : undefined}
-            onNewDm={() => toggleTool("new-dm")}
-            scopeChannel={searchChannel}
-          />
-        ) : null}
-        {dialog === "invite" ? (
-          <CommunityInviteDialog
-            onClose={() => setDialog(null)}
-            onAddMember={async (targetPubkey, role) => {
-              if (demo) return;
-              if (!client) throw new Error(t("error.relayClient"));
-              await addCommunityMember(client, targetPubkey, role);
-              await session.ensureProfiles([targetPubkey]);
-            }}
-            onMintInvite={async (options) => {
-              if (demo) {
-                return {
-                  code: "demo-code",
-                  expiresAt: Math.floor(Date.now() / 1_000) + options.ttlSecs,
-                  url: new URL(
-                    `${import.meta.env.BASE_URL}invite/demo-code`,
-                    window.location.origin,
-                  ).toString(),
-                  maxUses: options.maxUses,
-                  usesRemaining: options.maxUses,
-                };
-              }
-              return mintCommunityInvite(config.relayUrl, options);
-            }}
-          />
-        ) : null}
-        {selectedChannel && memberDialogOpen ? (
-          <MemberDialog
-            canManage={canManageChannel}
-            channel={selectedChannel}
-            currentPubkey={pubkey}
-            presence={state.presence}
-            profiles={state.profiles}
-            relayUrl={config.relayUrl}
-            onClose={() => setMemberDialogOpen(false)}
-            onMention={setInsertMention}
-            onOpenDm={async (target) => {
-              await session.openDm(target);
-              setMemberDialogOpen(false);
-            }}
-            onRemoveMember={(targetPubkey) =>
-              session.removeChannelMember(selectedChannel.id, targetPubkey)
-            }
-            onSetMember={(targetPubkey, role) =>
-              session.setChannelMember(selectedChannel.id, targetPubkey, role)
-            }
-          />
-        ) : null}
-        {archiveTarget ? (
-          <ArchiveChannelDialog
-            channel={archiveTarget}
-            onArchive={() => session.setChannelArchived(archiveTarget.id, true)}
-            onClose={() => setArchiveTarget(null)}
-          />
-        ) : null}
-        {editTarget ? (
-          <EditMessageDialog
-            message={editTarget}
-            onClose={() => setEditTarget(null)}
-            onSave={(content) => session.editMessage(editTarget, content)}
-          />
-        ) : null}
-        {deleteTarget ? (
-          <DeleteMessageDialog
-            onClose={() => setDeleteTarget(null)}
-            onConfirm={() => session.deleteMessage(deleteTarget)}
-          />
-        ) : null}
+        <WorkspaceDialogs
+          allowForum={features.forum}
+          canCreateChannel={canCreateChannel}
+          canManageChannel={canManage}
+          dialog={dialog}
+          pubkey={pubkey}
+          session={session}
+          onAddCommunity={communities.add}
+          onClose={() => setDialog(null)}
+          onMention={(name) => {
+            setInsertMention(name);
+            setDialog(null);
+          }}
+          onNewDm={() => panelActions.toggleTool("new-dm")}
+          onOpenDialog={setDialog}
+          onRemoveCommunity={(community: SavedCommunity) => communities.remove(community.id)}
+          onRevealMessage={revealMessage}
+          onSelectChannel={selectChannel}
+        />
       </div>
     </WorkspaceProvider>
   );
@@ -906,6 +550,8 @@ function Workspace({
 export function BuzzWebApp() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Applies font size/density to <html> before the identity gate renders.
+  useDisplayPreferences();
   useEffect(() => {
     void loadRuntimeConfig()
       .then(setConfig)
@@ -928,12 +574,29 @@ export function BuzzWebApp() {
       </div>
     );
   }
+  return <CommunityApp config={config} />;
+}
+
+/** Selects the active community and keys the workspace by Relay + identity. */
+function CommunityApp({ config }: { config: RuntimeConfig }) {
+  const { communities, active, activeConfig, removableIds, select, add, remove } =
+    useCommunities(config);
+  const communityActions: CommunityActions = {
+    controls: { communities, activeId: active.id, removableIds, onSelect: select },
+    add,
+    remove,
+  };
   return (
-    <IdentityGate config={config}>
+    <IdentityGate
+      key={activeConfig.relayUrl}
+      communities={communityActions.controls}
+      config={activeConfig}
+    >
       {({ pubkey, signOut, demo }) => (
         <Workspace
-          key={`${config.relayUrl}:${pubkey}`}
-          config={config}
+          key={`${activeConfig.relayUrl}:${pubkey}`}
+          communities={communityActions}
+          config={activeConfig}
           demo={demo}
           pubkey={pubkey}
           signOut={signOut}

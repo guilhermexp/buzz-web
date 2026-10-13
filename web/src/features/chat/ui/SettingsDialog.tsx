@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Bell,
   Download,
   KeyRound,
   LoaderCircle,
@@ -15,13 +16,22 @@ import type { UserProfile } from "@/features/chat/lib/chat-types";
 import { connectionStateLabel } from "@/features/chat/lib/connection-state";
 import { DialogFrame } from "@/features/chat/ui/AppDialogs";
 import { Avatar } from "@/features/chat/ui/Avatar";
+import { ExportSettingsSection } from "@/features/export/ui/ExportSettingsSection";
+import { NotificationSettingsSection } from "@/features/push/ui/NotificationSettingsSection";
+import { ReadabilitySettings } from "@/features/workspace/ui/AppearanceControls";
 import type { RelayConnectionState } from "@/shared/api/nostr-types";
 import { t } from "@/shared/i18n";
 import { downloadIdentityBackup } from "@/shared/lib/identity-backup";
 import { createActiveIdentityBackup, getActiveSignerMode } from "@/shared/lib/nostr-signer";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 
-export type SettingsSection = "appearance" | "identity" | "invites" | "profile";
+export type SettingsSection =
+  | "appearance"
+  | "export"
+  | "identity"
+  | "invites"
+  | "notifications"
+  | "profile";
 
 function ProfileEditor({
   profile,
@@ -130,6 +140,7 @@ function AppearanceSection() {
           </button>
         ))}
       </div>
+      <ReadabilitySettings />
     </div>
   );
 }
@@ -282,7 +293,9 @@ export function SettingsView({
   const sections = [
     { id: "profile", label: t("profile.title"), icon: UserRound },
     { id: "appearance", label: t("dialog.appearance"), icon: Monitor },
+    { id: "notifications", label: t("workspace.settings.notifications"), icon: Bell },
     { id: "invites", label: t("settings.invites"), icon: UserRoundPlus },
+    { id: "export", label: t("workspace.settings.export"), icon: Download },
     { id: "identity", label: t("settings.identity"), icon: KeyRound },
   ] as const;
 
@@ -362,6 +375,12 @@ export function SettingsView({
               )}
             </div>
           </div>
+        ) : section === "notifications" ? (
+          <div className="max-w-2xl">
+            <NotificationSettingsSection />
+          </div>
+        ) : section === "export" ? (
+          <ExportSettingsSection />
         ) : (
           <IdentitySection
             connectionState={connectionState}

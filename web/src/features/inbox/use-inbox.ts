@@ -188,6 +188,14 @@ export function useInbox({
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState<string | null>(null);
   const [approvalPending, setApprovalPending] = useState<string | null>(null);
+  /** Decisions the Relay accepted (OK) in this session, by approval event id. */
+  const [approvalDecisions, setApprovalDecisions] = useState<Record<string, "granted" | "denied">>(
+    {},
+  );
+  const keepApprovalIds = useMemo(
+    () => new Set(Object.keys(approvalDecisions)),
+    [approvalDecisions],
+  );
   const channelIdsKey = channels
     .map((channel) => channel.id)
     .sort()
@@ -289,8 +297,19 @@ export function useInbox({
           }
         });
     }
+    // Live filters are `limit: 0`, so a re-REQ after a reconnect only streams
+    // new events; events published while offline are recovered from history.
+    let interrupted = false;
+    const stopStateListener = client.onStateChange((state) => {
+      if (state !== "connected") interrupted = true;
+      else if (interrupted) {
+        interrupted = false;
+        void refresh();
+      }
+    });
     return () => {
       cancelled = true;
+      stopStateListener();
       for (const unsubscribe of unsubscribers) unsubscribe();
     };
   }, [channelIdsKey, client, currentPubkey, demo, ensureProfiles, eventScopeKey, refresh]);
@@ -309,8 +328,8 @@ export function useInbox({
     return result;
   }, [events, forcedUnreadIds, readContexts, rootsByEvent]);
   const items = useMemo(
-    () => buildInboxItems({ events, channels, currentPubkey, readIds }),
-    [channels, currentPubkey, events, readIds],
+    () => buildInboxItems({ events, channels, currentPubkey, readIds, keepApprovalIds }),
+    [channels, currentPubkey, events, keepApprovalIds, readIds],
   );
   const unreadCount = items.filter((item) => item.unread).length;
   const markRead = useCallback(
@@ -382,6 +401,34 @@ export function useInbox({
     },
     [events, markContextRead, rootsByEvent],
   );
+  /** Latest top-level event from someone else, the anchor for "Mark unread". */
+  const latestForeignChannelEvent = useCallback(
+    (channelId: string) => {
+      const current = currentPubkey.toLowerCase();
+      return topLevelChannelEvents(events, channelId)
+        .filter((event) => event.pubkey.toLowerCase() !== current)
+        .reduce<NostrEvent | null>(
+          (latest, event) => (!latest || event.created_at > latest.created_at ? event : latest),
+          null,
+        );
+    },
+    [currentPubkey, events],
+  );
+  const canMarkChannelUnread = useCallback(
+    (channelId: string) => latestForeignChannelEvent(channelId) !== null,
+    [latestForeignChannelEvent],
+  );
+  /**
+   * Read state is a grow-only shared register, so "unread" is kept as this
+   * browser's forced-unread flag on the channel's latest message.
+   */
+  const markChannelUnread = useCallback(
+    (channelId: string) => {
+      const latest = latestForeignChannelEvent(channelId);
+      if (latest) setForcedUnreadIds((current) => new Set([...current, latest.id]));
+    },
+    [latestForeignChannelEvent],
+  );
   const channelUnreadCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     const current = currentPubkey.toLowerCase();
@@ -425,12 +472,13 @@ export function useInbox({
             tags: [["d", reference.toLowerCase()]],
           });
         }
+        // The OK means the Relay accepted the decision, not that the run
+        // resumed; the item stays visible so the UI can read the run state.
+        setApprovalDecisions((current) => ({
+          ...current,
+          [event.id]: approved ? "granted" : "denied",
+        }));
         markRead(event.id);
-        setEventState((current) =>
-          current.scopeKey === eventScopeKey
-            ? { ...current, events: current.events.filter((item) => item.id !== event.id) }
-            : current,
-        );
         setError(null);
       } catch (approvalError) {
         setError(
@@ -440,7 +488,7 @@ export function useInbox({
         setApprovalPending(null);
       }
     },
-    [client, demo, eventScopeKey, markRead],
+    [client, demo, markRead],
   );
 
   return {
@@ -450,12 +498,17 @@ export function useInbox({
     loading,
     error,
     approvalPending,
+    approvalDecisions,
     refresh,
     markRead,
     markUnread,
     markAllRead,
     markChannelRead,
+    markChannelUnread,
+    canMarkChannelUnread,
     markThreadRead,
     respondToApproval,
   };
 }
+
+export type InboxState = ReturnType<typeof useInbox>;

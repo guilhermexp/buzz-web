@@ -134,6 +134,65 @@ describe("buildInboxItems", () => {
     expect(items).toEqual([]);
   });
 
+  it("keeps a decided approval visible with the Relay's recorded outcome", () => {
+    const reference = "f".repeat(64);
+    const request = event(
+      "a",
+      OTHER,
+      46010,
+      [
+        ["p", ME],
+        ["d", reference],
+      ],
+      JSON.stringify({
+        summary: "Deploy to staging",
+        workflow_id: "wf-1",
+        run_id: "run-1",
+        step_id: "approve",
+        expires_at: 1_900_000_000,
+      }),
+      1,
+    );
+    const keepApprovalIds = new Set([request.id]);
+    const pending = buildInboxItems({
+      events: [request],
+      channels,
+      currentPubkey: ME,
+      readIds: new Set(),
+      keepApprovalIds,
+    });
+    expect(pending[0]?.approval).toMatchObject({
+      reference,
+      workflowId: "wf-1",
+      runId: "run-1",
+      stepId: "approve",
+      summary: "Deploy to staging",
+      expiresAt: 1_900_000_000,
+      resolution: null,
+    });
+    const expired = buildInboxItems({
+      events: [
+        request,
+        event(
+          "b",
+          OTHER,
+          46012,
+          [
+            ["d", reference],
+            ["status", "expired"],
+          ],
+          "",
+          2,
+        ),
+      ],
+      channels,
+      currentPubkey: ME,
+      readIds: new Set(),
+      keepApprovalIds,
+    });
+    expect(expired.map((item) => item.approval?.resolution)).toEqual(["expired"]);
+  });
+
   it("includes nested replies to threads the current user created or joined", () => {
     const otherRoot = event("3", OTHER, 9, [["h", "general"]], "other root", 1);
     const ownReply = event(

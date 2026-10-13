@@ -686,5 +686,7 @@ export function useRelayUserState({
     setChannelStarred,
     setChannelMuted,
     markContextRead,
+    /** Publishes pending changes now (used before the workspace's client is disposed). */
+    flush,
   };
 }

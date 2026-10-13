@@ -8,11 +8,12 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineMessage, UserProfile } from "@/features/chat/lib/chat-types";
 import { Avatar } from "@/features/chat/ui/Avatar";
 import { MessageContent } from "@/features/chat/ui/MessageContent";
 import { SystemMessageRow } from "@/features/chat/ui/SystemMessageRow";
+import { RemindMeMenuItem } from "@/features/reminders/ui/RemindMeMenuItem";
 import { getLocale, t } from "@/shared/i18n";
 import { truncatePubkey } from "@/shared/lib/pubkey";
 
@@ -106,6 +107,7 @@ export function MessageRow({
   focused?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const messageChannelId = message.event.tags.find((tag) => tag[0] === "h")?.[1] ?? "";
   const [targetHighlighted, setTargetHighlighted] = useState(false);
   const desktopMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -164,7 +166,7 @@ export function MessageRow({
     <article
       ref={rowRef}
       aria-current={focused ? "true" : undefined}
-      className={`group relative flex gap-2.5 px-3 py-1.5 transition-colors duration-700 motion-reduce:transition-none sm:px-4 ${
+      className={`group relative flex gap-2.5 px-3 py-conversation-row transition-colors duration-700 motion-reduce:transition-none sm:px-4 ${
         targetHighlighted
           ? "bg-foreground/[0.09] ring-1 ring-inset ring-foreground/15"
           : "hover:bg-foreground/[0.035]"
@@ -178,19 +180,21 @@ export function MessageRow({
       <Avatar
         profile={profile}
         relayUrl={relayUrl}
-        size={32}
+        size={36}
         showStatus={profile.isAgent}
         status={presence}
       />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-2">
-          <strong className="truncate text-sm font-semibold text-foreground">{profile.name}</strong>
+          <strong className="truncate text-message font-semibold leading-message-author text-foreground">
+            {profile.name}
+          </strong>
           {profile.isAgent ? (
             <span className="rounded bg-foreground/8 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
               {t("common.agent")}
             </span>
           ) : null}
-          <time className="shrink-0 text-[11px] text-muted-foreground">
+          <time className="shrink-0 text-message-timestamp tabular-nums text-muted-foreground">
             {formatTime(message.event.created_at)}
           </time>
           {message.edited ? (
@@ -300,6 +304,11 @@ export function MessageRow({
                       {t("message.delete")}
                     </button>
                   ) : null}
+                  <RemindMeMenuItem
+                    channelId={messageChannelId}
+                    message={message}
+                    onSelect={() => setMenuOpen(false)}
+                  />
                 </div>
               </div>
             ) : null}
@@ -403,8 +412,7 @@ export function MessageRow({
             <CornerUpLeft className="h-3.5 w-3.5" />
           </button>
         ) : null}
-        {!message.deleted &&
-        ((ownMessage && onEdit) || ((ownMessage || canModerate) && onDelete)) ? (
+        {!message.deleted ? (
           <div className="relative" ref={desktopMenuRef}>
             <button
               aria-expanded={menuOpen}
@@ -423,6 +431,11 @@ export function MessageRow({
                 className="absolute right-0 top-8 z-30 w-40 rounded-lg border bg-popover p-1 shadow-xl"
                 role="menu"
               >
+                <RemindMeMenuItem
+                  channelId={messageChannelId}
+                  message={message}
+                  onSelect={() => setMenuOpen(false)}
+                />
                 {ownMessage && onEdit ? (
                   <button
                     className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-foreground/6"
@@ -475,6 +488,7 @@ export function MessageList({
   canModerate,
   unreadAfter,
   focusedMessageId = null,
+  intro = null,
 }: {
   messages: TimelineMessage[];
   profiles: Record<string, UserProfile>;
@@ -490,6 +504,8 @@ export function MessageList({
   canModerate: boolean;
   unreadAfter: number | null;
   focusedMessageId?: string | null;
+  /** Channel start header, shown when the loaded history reaches the beginning. */
+  intro?: ReactNode;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const unreadRef = useRef<HTMLDivElement>(null);
@@ -518,6 +534,11 @@ export function MessageList({
       </div>
     );
   }
+  if (!topLevel.length && intro) {
+    return (
+      <div className="buzz-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">{intro}</div>
+    );
+  }
   if (!topLevel.length) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
@@ -531,6 +552,7 @@ export function MessageList({
 
   return (
     <div className="buzz-scrollbar min-h-0 flex-1 overflow-y-auto py-3">
+      {intro}
       {topLevel.map((message, index) => {
         const previousMessage = topLevel[index - 1];
         const dateDivider =

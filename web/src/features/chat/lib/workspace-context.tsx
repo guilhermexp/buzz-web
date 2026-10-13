@@ -27,6 +27,14 @@ export type WorkspaceContextValue = {
   revealMessage: (channelId: string, eventId: string, threadRootId: string | null) => void;
   /** Show feature content in the right-hand panel; `null` closes it. */
   showSidePanel: (panel: ReactNode | null) => void;
+  /** Shared read state (kind 30078 `read-state`): context id → last read timestamp. */
+  readContexts: Readonly<Record<string, number>>;
+  markContextRead: (contextId: string, timestamp: number) => void;
+  /** Channels muted in the relay user state (kind 30078 `channel-mutes`). */
+  mutedChannelIds: ReadonlySet<string>;
+  presence: Record<string, "online" | "away" | "offline">;
+  /** Reload channel metadata and rosters from the Relay. */
+  refreshChannels: () => Promise<void>;
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);

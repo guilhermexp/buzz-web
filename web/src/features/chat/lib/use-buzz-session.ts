@@ -29,6 +29,12 @@ import {
   validPresence,
 } from "@/features/chat/lib/session-events";
 import { type ReplyTarget, useSessionMutations } from "@/features/chat/lib/use-session-mutations";
+import {
+  applyPendingRoles,
+  freshestRosters,
+  type PendingRoleChange,
+  settlePendingRoles,
+} from "@/features/workspace/lib/roster-merge";
 import type { NostrEvent, RelayConnectionState } from "@/shared/api/nostr-types";
 import type { BuzzRelayClient } from "@/shared/api/relay-client";
 import type { RuntimeConfig } from "@/shared/config/runtime-config";
@@ -74,6 +80,10 @@ export function useBuzzSession({
   const [delivery, setDelivery] = useState<Record<string, "sending" | "failed">>({});
   const typingSentAt = useRef(0);
   const presenceUpdatedAt = useRef<Record<string, number>>({});
+  const rosterCache = useRef(new Map<string, NostrEvent>());
+  const [rosterVersions, setRosterVersions] = useState<Record<string, number>>({});
+  const [pendingRoles, setPendingRoles] = useState<PendingRoleChange[]>([]);
+  const mountedRef = useRef(true);
   const agentPubkeys = useMemo(
     () => new Set(config.agents.map((agent) => agent.pubkey.toLowerCase())),
     [config.agents],
@@ -138,8 +148,9 @@ export function useBuzzSession({
         client.query({ kinds: [39000], limit: 1_000 }),
         client.query({ kinds: [13534], limit: 1 }),
       ]);
-      const missingOwnMetadataIds = metadataChannelIdsMissingFrom(metadataEvents, ownMemberEvents);
-      const membershipVisibleIds = membershipQueryChannelIds(metadataEvents, ownMemberEvents);
+      const ownRosters = freshestRosters(rosterCache.current, ownMemberEvents);
+      const missingOwnMetadataIds = metadataChannelIdsMissingFrom(metadataEvents, ownRosters);
+      const membershipVisibleIds = membershipQueryChannelIds(metadataEvents, ownRosters);
       const [visibleMemberEvents, missingMetadataEvents] = await Promise.all([
         membershipVisibleIds.length
           ? client.query({ kinds: [39002], "#d": membershipVisibleIds, limit: 1_000 })
@@ -148,10 +159,19 @@ export function useBuzzSession({
           ? client.query({ kinds: [39000], "#d": missingOwnMetadataIds, limit: 500 })
           : Promise.resolve([]),
       ]);
+      const visibleRosters = freshestRosters(rosterCache.current, visibleMemberEvents);
+      setRosterVersions((current) => {
+        const next = { ...current };
+        for (const roster of [...ownRosters, ...visibleRosters]) {
+          const channelId = roster.tags.find((tag) => tag[0] === "d")?.[1];
+          if (channelId) next[channelId] = roster.created_at;
+        }
+        return next;
+      });
       const nextDiscovered = buildDiscoveredChannels({
         metadataEvents: mergeEvents(metadataEvents, missingMetadataEvents),
-        memberEvents: visibleMemberEvents,
-        ownMemberEvents,
+        memberEvents: visibleRosters,
+        ownMemberEvents: ownRosters,
         currentPubkey: pubkey,
       });
       const nextChannels = nextDiscovered.filter(
@@ -575,7 +595,30 @@ export function useBuzzSession({
     [auxiliaryEvents, delivery, pubkey, visibleContentEvents],
   );
 
-  const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? null;
+  const visibleChannels = useMemo(
+    () => applyPendingRoles(channels, pendingRoles),
+    [channels, pendingRoles],
+  );
+  const visibleDiscoveredChannels = useMemo(
+    () => applyPendingRoles(discoveredChannels, pendingRoles),
+    [discoveredChannels, pendingRoles],
+  );
+  const selectedChannel =
+    visibleChannels.find((channel) => channel.id === selectedChannelId) ?? null;
+
+  useEffect(() => {
+    setPendingRoles((current) => {
+      const settled = settlePendingRoles(current, rosterVersions);
+      return settled.length === current.length ? current : settled;
+    });
+  }, [rosterVersions]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const mutations = useSessionMutations({
     client,
@@ -597,6 +640,49 @@ export function useBuzzSession({
     loadChannels,
     loadProfiles,
   });
+
+  const mutateChannelMember = mutations.setChannelMember;
+  const setChannelMember = useCallback(
+    async (channelId: string, memberPubkey: string, role: "admin" | "member" | "guest") => {
+      const baseline = rosterCache.current.get(channelId)?.created_at ?? 0;
+      // Resolves after the Relay's OK and one roster reload.
+      await mutateChannelMember(channelId, memberPubkey, role);
+      if (demo || (rosterCache.current.get(channelId)?.created_at ?? 0) > baseline) return;
+      // The relay-signed roster lags the accepted command: keep the accepted
+      // role visible until a newer roster is observed instead of letting the
+      // stale roster revert it, and re-read the roster until it catches up.
+      const pubkeyLower = memberPubkey.toLowerCase();
+      setPendingRoles((current) => [
+        ...current.filter(
+          (change) => change.channelId !== channelId || change.pubkey !== pubkeyLower,
+        ),
+        { channelId, pubkey: pubkeyLower, role, rosterVersion: baseline },
+      ]);
+      void (async () => {
+        for (const delay of [500, 1_000, 2_000, 4_000, 8_000]) {
+          await new Promise((resolve) => window.setTimeout(resolve, delay));
+          if (!mountedRef.current) return;
+          if ((rosterCache.current.get(channelId)?.created_at ?? 0) > baseline) return;
+          await loadChannels().catch(() => undefined);
+        }
+      })();
+    },
+    [demo, loadChannels, mutateChannelMember],
+  );
+
+  const leaveChannel = useCallback(
+    async (channelId: string) => {
+      if (demo) {
+        setChannels((current) => current.filter((channel) => channel.id !== channelId));
+        return;
+      }
+      if (!client) throw new Error(t("error.relayClient"));
+      // NIP-29 leave request; the Relay removes the caller from the roster.
+      await client.publish({ kind: 9022, content: "", tags: [["h", channelId]] });
+      await loadChannels();
+    },
+    [client, demo, loadChannels],
+  );
 
   const search = useCallback(
     async (term: string, channelId?: string): Promise<SearchHit[]> => {
@@ -653,7 +739,7 @@ export function useBuzzSession({
   const state: SessionState = {
     connectionState,
     error,
-    channels,
+    channels: visibleChannels,
     selectedChannelId,
     messages,
     profiles,
@@ -667,13 +753,17 @@ export function useBuzzSession({
   return {
     state,
     selectedChannel,
-    discoveredChannels,
+    discoveredChannels: visibleDiscoveredChannels,
     selectChannel,
     revealMessage,
     ...mutations,
+    setChannelMember,
+    leaveChannel,
     search,
     notifyTyping,
     ensureProfiles: loadProfiles,
     refreshChannels: loadChannels,
   };
 }
+
+export type BuzzSession = ReturnType<typeof useBuzzSession>;

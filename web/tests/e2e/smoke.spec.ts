@@ -18,12 +18,10 @@ const DEMO_CONFIG = {
     {
       pubkey: "a".repeat(64),
       name: "Codex(remote)",
-      startable: true,
     },
     {
       pubkey: "b".repeat(64),
       name: "Grok(remote)",
-      startable: true,
     },
   ],
 };
@@ -244,7 +242,10 @@ test("mobile Inbox and Agents views remain usable", async ({ page }) => {
 
   await page.getByRole("button", { name: "Agents" }).last().click();
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
-  await expect(page.getByText("Codex(remote)").first()).toBeVisible();
+  // The closed channel drawer is invisible on phones, so scope to the Agents view.
+  await expect(
+    page.getByTestId("workspace-tool-agents").getByText("Codex(remote)").first(),
+  ).toBeVisible();
   await expectNoViewportOverflow(page);
   await page.screenshot({
     path: "test-results/visual/buzz-web-agents-mobile.png",
@@ -637,7 +638,7 @@ test("mention autocomplete works in channel and thread composers", async ({ page
   const channelSuggestions = page.getByRole("listbox", { name: "Mention suggestions" });
   await expect(channelSuggestions.getByRole("option", { name: /Codex\(remote\)/ })).toBeVisible();
   await channelComposer.press("Enter");
-  await expect(channelComposer).toHaveValue("@Codex(remote) ");
+  await expect(channelComposer).toHaveText("@Codex(remote) ");
 
   const rootRow = page.locator("article").filter({
     hasText: "Relay is healthy. Postgres, Redis, MinIO, and Git are available.",
@@ -654,7 +655,7 @@ test("mention autocomplete works in channel and thread composers", async ({ page
     animations: "disabled",
   });
   await threadComposer.press("Tab");
-  await expect(threadComposer).toHaveValue("@Grok(remote) ");
+  await expect(threadComposer).toHaveText("@Grok(remote) ");
   await expectNoViewportOverflow(page);
 });
 
@@ -672,7 +673,12 @@ test("mentions and single line breaks render consistently in channels and thread
   await expect(seededMention.locator("svg")).toHaveCount(1);
 
   const channelComposer = page.getByLabel("Send a message to #general");
-  await channelComposer.fill("@Codex(remote) 第一行\n第二行\n@Unknown");
+  // The rich composer sends on Enter; Shift+Enter is the desktop single line break.
+  await channelComposer.click();
+  for (const [index, line] of ["@Codex(remote) 第一行", "第二行", "@Unknown"].entries()) {
+    if (index) await page.keyboard.press("Shift+Enter");
+    await page.keyboard.insertText(line);
+  }
   await page.getByRole("button", { name: "Send message" }).click();
 
   const channelMessage = page.locator("article").filter({ hasText: "第二行" }).last();
@@ -705,7 +711,11 @@ test("mentions and single line breaks render consistently in channels and thread
   );
 
   const threadComposer = thread.getByLabel("Reply to thread");
-  await threadComposer.fill("@Grok(remote) 线程第一行\n线程第二行\n@Unknown");
+  await threadComposer.click();
+  for (const [index, line] of ["@Grok(remote) 线程第一行", "线程第二行", "@Unknown"].entries()) {
+    if (index) await page.keyboard.press("Shift+Enter");
+    await page.keyboard.insertText(line);
+  }
   await thread.getByRole("button", { name: "Send message" }).click();
 
   const threadReply = thread.locator("article").filter({ hasText: "线程第二行" });
@@ -888,30 +898,6 @@ test("Inbox list width is resizable and persists", async ({ page }) => {
     (element) => element.parentElement?.getBoundingClientRect().width ?? 0,
   );
   expect(Math.abs(restored - resized)).toBeLessThan(2);
-});
-
-test("an offline agent play button starts its service without opening a DM", async ({ page }) => {
-  await enableDemo(page);
-  await page.route("https://buzz.example.com/app/api/agent-control/start", async (route) => {
-    await route.fulfill({
-      status: 202,
-      contentType: "application/json",
-      body: JSON.stringify({ status: "accepted", action: "started" }),
-    });
-  });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Agents" }).first().click();
-
-  const requestPromise = page.waitForRequest(
-    "https://buzz.example.com/app/api/agent-control/start",
-  );
-  await page.getByRole("button", { name: "Start Grok(remote)" }).click();
-  const request = await requestPromise;
-  expect(request.method()).toBe("POST");
-  expect(request.postDataJSON()).toEqual({ pubkey: "b".repeat(64) });
-  expect(request.headers().authorization).toMatch(/^Nostr /);
-  await expect(page.getByTestId("workspace-tool-agents")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Grok(remote)" })).toHaveCount(0);
 });
 
 test("Inbox filters unread activity and opens the source thread", async ({ page }) => {

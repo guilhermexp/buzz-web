@@ -63,6 +63,8 @@ export class BuzzRelayClient {
   private reconnectDelay = 1_000;
   private manuallyClosed = false;
   private terminal = false;
+  /** Set once the owning workspace unmounts; the client never reconnects after. */
+  private disposed = false;
   private state: RelayConnectionState = "idle";
   private stateListeners = new Set<(state: RelayConnectionState) => void>();
   private subscriptions = new Map<string, Subscription>();
@@ -117,6 +119,7 @@ export class BuzzRelayClient {
   }
 
   async connect(): Promise<void> {
+    if (this.disposed) throw new Error(t("error.relaySessionClosed"));
     if (this.terminal) throw new Error(t("error.relayIdentityRejected"));
     if (this.state === "connected" && this.socket?.readyState === WebSocket.OPEN) return;
     if (this.connectPromise) return this.connectPromise;
@@ -168,8 +171,19 @@ export class BuzzRelayClient {
     this.pendingPublishes.clear();
   }
 
+  /**
+   * Permanently closes this client. Unlike `disconnect()`, later queries,
+   * publishes or subscriptions are rejected instead of silently reopening a
+   * socket, so late async work from an unmounted workspace cannot leak traffic
+   * or connections into another community's session.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.disconnect();
+  }
+
   private openSocket(): void {
-    if (this.manuallyClosed || this.terminal) return;
+    if (this.manuallyClosed || this.terminal || this.disposed) return;
     let socket: WebSocket;
     try {
       socket = new WebSocket(this.relayUrl);

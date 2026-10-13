@@ -4,7 +4,6 @@ import {
   CheckCheck,
   ExternalLink,
   Inbox,
-  LoaderCircle,
   Mail,
   MoreHorizontal,
   RefreshCw,
@@ -15,47 +14,18 @@ import { useMemo, useState } from "react";
 import type { BuzzChannel, UserProfile } from "@/features/chat/lib/chat-types";
 import { Avatar } from "@/features/chat/ui/Avatar";
 import { MessageContent } from "@/features/chat/ui/MessageContent";
-import type { InboxCategory, InboxItem } from "@/features/inbox/lib/inbox-model";
-import { inboxPreview } from "@/features/inbox/lib/inbox-model";
+import type { InboxItem } from "@/features/inbox/lib/inbox-model";
+import { ApprovalPanel } from "@/features/inbox/ui/ApprovalPanel";
+import { type InboxFilter, InboxList, inboxProfile } from "@/features/inbox/ui/InboxList";
 import { InboxListResizeHandle, useInboxListWidth } from "@/features/inbox/ui/InboxPanelSizing";
+import { InboxReminders } from "@/features/reminders/ui/InboxReminders";
 import { getLocale, t } from "@/shared/i18n";
-import { truncatePubkey } from "@/shared/lib/pubkey";
-
-type InboxFilter = "all" | InboxCategory;
-
-function categoryLabel(category: InboxCategory): string {
-  if (category === "dm") return t("inbox.directMessage");
-  if (category === "thread") return t("inbox.threadReply");
-  if (category === "needs_action") return t("inbox.needsAction");
-  return t("inbox.mention");
-}
-
-function relativeTime(createdAt: number): string {
-  const seconds = createdAt - Math.floor(Date.now() / 1_000);
-  const formatter = new Intl.RelativeTimeFormat(getLocale(), { numeric: "auto" });
-  if (Math.abs(seconds) < 60) return formatter.format(seconds, "second");
-  const minutes = Math.round(seconds / 60);
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
-  const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
-  return formatter.format(Math.round(hours / 24), "day");
-}
 
 function eventTime(createdAt: number): string {
   return new Intl.DateTimeFormat(getLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(createdAt * 1_000);
-}
-
-function fallbackProfile(item: InboxItem): UserProfile {
-  return {
-    pubkey: item.event.pubkey,
-    name: truncatePubkey(item.event.pubkey),
-    about: "",
-    picture: null,
-    isAgent: false,
-  };
 }
 
 export function InboxView({
@@ -66,6 +36,8 @@ export function InboxView({
   loading,
   error,
   approvalPending,
+  approvalDecisions,
+  demo,
   onClose,
   onRefresh,
   onMarkRead,
@@ -81,6 +53,8 @@ export function InboxView({
   loading: boolean;
   error: string | null;
   approvalPending: string | null;
+  approvalDecisions: Readonly<Record<string, "granted" | "denied">>;
+  demo: boolean;
   onClose: () => void;
   onRefresh: () => void;
   onMarkRead: (id: string) => void;
@@ -89,7 +63,7 @@ export function InboxView({
   onOpenConversation: (item: InboxItem) => void;
   onRespondToApproval: (item: InboxItem, approved: boolean) => Promise<void>;
 }) {
-  const [filter, setFilter] = useState<InboxFilter>("all");
+  const [filter, setFilter] = useState<InboxFilter | "reminders">("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const {
@@ -104,13 +78,11 @@ export function InboxView({
       ),
     [filter, items, unreadOnly],
   );
-  const selected = selectedId
-    ? (items.find((item) => item.id === selectedId) ?? visibleItems[0] ?? null)
-    : (visibleItems[0] ?? null);
+  // Nothing is opened until the user picks a row, so reading an item (and
+  // marking it read) is always an explicit action.
+  const selected = selectedId ? (items.find((item) => item.id === selectedId) ?? null) : null;
   const unreadCount = items.filter((item) => item.unread).length;
-  const selectedProfile = selected
-    ? (profiles[selected.event.pubkey.toLowerCase()] ?? fallbackProfile(selected))
-    : null;
+  const selectedProfile = selected ? inboxProfile(profiles, selected) : null;
   const selectedChannel = selected?.channelId
     ? channels.find((channel) => channel.id === selected.channelId)
     : null;
@@ -151,13 +123,14 @@ export function InboxView({
             aria-label={t("inbox.filter")}
             className="hidden h-8 min-w-28 rounded-md bg-transparent px-1 text-sm font-semibold outline-none lg:block"
             value={filter}
-            onChange={(event) => setFilter(event.target.value as InboxFilter)}
+            onChange={(event) => setFilter(event.target.value as InboxFilter | "reminders")}
           >
             <option value="all">{t("inbox.all")}</option>
             <option value="mention">{t("inbox.mentions")}</option>
             <option value="dm">{t("inbox.directMessages")}</option>
             <option value="thread">{t("inbox.threadReplies")}</option>
             <option value="needs_action">{t("inbox.needsAction")}</option>
+            <option value="reminders">{t("workspace.inbox.reminders")}</option>
           </select>
           <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
             {t("inbox.unreadCount", { count: unreadCount })}
@@ -190,13 +163,14 @@ export function InboxView({
             aria-label={t("inbox.filter")}
             className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
             value={filter}
-            onChange={(event) => setFilter(event.target.value as InboxFilter)}
+            onChange={(event) => setFilter(event.target.value as InboxFilter | "reminders")}
           >
             <option value="all">{t("inbox.all")}</option>
             <option value="mention">{t("inbox.mentions")}</option>
             <option value="dm">{t("inbox.directMessages")}</option>
             <option value="thread">{t("inbox.threadReplies")}</option>
             <option value="needs_action">{t("inbox.needsAction")}</option>
+            <option value="reminders">{t("workspace.inbox.reminders")}</option>
           </select>
           <button
             aria-label={t("inbox.close")}
@@ -218,77 +192,39 @@ export function InboxView({
           {t("inbox.unreadOnly")}
         </label>
 
-        {error ? (
-          <div className="border-b bg-destructive/8 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="buzz-scrollbar min-h-0 flex-1 overflow-y-auto">
-          {visibleItems.map((item) => {
-            const profile = profiles[item.event.pubkey.toLowerCase()] ?? fallbackProfile(item);
-            const channel = item.channelId
-              ? channels.find((candidate) => candidate.id === item.channelId)
-              : null;
-            const isSelected = selected?.id === item.id;
-            return (
-              <button
-                key={item.id}
-                aria-pressed={isSelected}
-                className={`group flex min-h-[88px] w-full gap-3 border-b px-3 py-3 text-left transition-colors ${
-                  isSelected ? "bg-foreground/[0.055]" : "hover:bg-foreground/[0.035]"
-                }`}
-                type="button"
-                onClick={() => {
-                  setSelectedId(item.id);
-                  onMarkRead(item.id);
-                }}
-              >
-                <Avatar profile={profile} relayUrl={relayUrl} size={34} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                      {profile.name}
-                    </span>
-                    {item.unread ? (
-                      <span
-                        aria-label={t("inbox.unread")}
-                        className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                        role="img"
-                      />
-                    ) : null}
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {relativeTime(item.event.created_at)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span>{categoryLabel(item.category)}</span>
-                    {channel ? (
-                      <>
-                        <span>·</span>
-                        <span className="truncate">#{channel.name}</span>
-                      </>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-foreground/90">
-                    {inboxPreview(item.event) || t("inbox.noDetails")}
-                  </p>
-                </div>
-              </button>
-            );
-          })}
-          {!loading && !visibleItems.length ? (
-            <div className="px-5 py-14 text-center">
-              <Mail className="mx-auto h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-3 text-sm text-muted-foreground">{t("inbox.empty")}</p>
+        {filter === "reminders" ? <InboxReminders /> : null}
+        <div
+          className={`buzz-scrollbar min-h-0 flex-1 overflow-y-auto ${filter === "reminders" ? "hidden" : ""}`}
+        >
+          {error && visibleItems.length ? (
+            <div
+              className="border-b bg-destructive/8 px-3 py-2 text-xs text-destructive"
+              role="alert"
+            >
+              {error}
             </div>
           ) : null}
-          {loading && !visibleItems.length ? (
-            <div className="flex items-center justify-center px-5 py-14 text-sm text-muted-foreground">
-              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-              {t("inbox.loading")}
-            </div>
-          ) : null}
+          {filter === "reminders" ? null : (
+            <InboxList
+              channels={channels}
+              error={error}
+              filter={filter}
+              items={visibleItems}
+              loading={loading}
+              profiles={profiles}
+              relayUrl={relayUrl}
+              selectedId={selected?.id ?? null}
+              unreadOnly={unreadOnly}
+              onMarkRead={onMarkRead}
+              onMarkUnread={onMarkUnread}
+              onOpenSource={onOpenConversation}
+              onRetry={onRefresh}
+              onSelect={(item) => {
+                setSelectedId(item.id);
+                onMarkRead(item.id);
+              }}
+            />
+          )}
         </div>
       </section>
 
@@ -306,7 +242,11 @@ export function InboxView({
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{detailTitle}</h3>
+          {selected ? (
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{detailTitle}</h3>
+          ) : (
+            <span className="min-w-0 flex-1" />
+          )}
           {selected ? (
             <>
               <button
@@ -352,8 +292,7 @@ export function InboxView({
             <div className="buzz-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
               <div className="mx-auto max-w-[900px]">
                 {relatedItems.map((item, index) => {
-                  const profile =
-                    profiles[item.event.pubkey.toLowerCase()] ?? fallbackProfile(item);
+                  const profile = inboxProfile(profiles, item);
                   return (
                     <article key={item.id} className={index ? "mt-5 border-t pt-5" : undefined}>
                       <div className="flex items-start gap-3">
@@ -382,28 +321,16 @@ export function InboxView({
 
             <footer className="shrink-0 px-4 pb-4 sm:px-6">
               <div className="mx-auto max-w-[900px]">
-                {selected.category === "needs_action" ? (
-                  <div className="mb-3 flex justify-end gap-2">
-                    <button
-                      className="h-8 rounded-md border px-3 text-xs font-medium hover:bg-foreground/5 disabled:opacity-50"
-                      disabled={approvalPending !== null}
-                      type="button"
-                      onClick={() => void onRespondToApproval(selected, false)}
-                    >
-                      {t("inbox.deny")}
-                    </button>
-                    <button
-                      className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                      disabled={approvalPending !== null}
-                      type="button"
-                      onClick={() => void onRespondToApproval(selected, true)}
-                    >
-                      {approvalPending === selected.id ? (
-                        <LoaderCircle className="mr-2 inline h-3.5 w-3.5 animate-spin" />
-                      ) : null}
-                      {t("inbox.approve")}
-                    </button>
-                  </div>
+                {selected.approval ? (
+                  <ApprovalPanel
+                    approval={selected.approval}
+                    decision={approvalDecisions[selected.id]}
+                    demo={demo}
+                    disabled={approvalPending !== null}
+                    pending={approvalPending === selected.id}
+                    relayUrl={relayUrl}
+                    onRespond={(approved) => void onRespondToApproval(selected, approved)}
+                  />
                 ) : null}
                 <button
                   aria-label={t("inbox.openConversation")}
@@ -430,7 +357,9 @@ export function InboxView({
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
             <Mail className="h-9 w-9 opacity-45" />
-            <p className="mt-3 text-sm">{t("inbox.empty")}</p>
+            <p className="mt-3 text-sm">
+              {visibleItems.length ? t("workspace.inbox.selectItem") : t("inbox.empty")}
+            </p>
           </div>
         )}
       </section>

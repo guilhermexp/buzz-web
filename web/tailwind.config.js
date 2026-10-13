@@ -7,6 +7,27 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Conversation type and spacing follow Buzz Desktop's tokens; they scale
+      // with the font-size/density preferences (see globals.css).
+      fontSize: {
+        message: [
+          "var(--conversation-message-font-size)",
+          { lineHeight: "var(--conversation-message-line-height)" },
+        ],
+        "message-timestamp": [
+          "var(--conversation-timestamp-font-size)",
+          { lineHeight: "var(--conversation-timestamp-line-height)" },
+        ],
+      },
+      lineHeight: {
+        "message-author": "var(--conversation-author-line-height)",
+      },
+      spacing: {
+        "conversation-body": "var(--conversation-body-gap)",
+        "conversation-row": "var(--conversation-row-padding-block)",
+        "conversation-paragraph": "var(--conversation-paragraph-gap)",
+        "conversation-list": "var(--conversation-list-item-gap)",
+      },
       fontFamily: {
         sans: ['"Inter Variable"', "Inter", '"Avenir Next"', '"Segoe UI"', "sans-serif"],
       },

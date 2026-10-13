@@ -332,3 +332,28 @@ describe("BuzzRelayClient rate limits", () => {
     client.disconnect();
   });
 });
+
+describe("BuzzRelayClient disposal", () => {
+  it("never reopens a socket after the owning workspace disposes it", async () => {
+    const client = new BuzzRelayClient("wss://relay.example");
+    const socket = await connectClient(client);
+    client.dispose();
+    expect(socket.readyState).toBe(3);
+
+    // Late work from an unmounted workspace (queries, publishes, subscriptions)
+    // must fail instead of silently reconnecting, unlike after disconnect().
+    await expect(client.query({ kinds: [1] })).rejects.toThrow();
+    await expect(client.subscribe({ kinds: [1] }, () => undefined)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("still reconnects on demand after a plain disconnect", async () => {
+    const client = new BuzzRelayClient("wss://relay.example");
+    await connectClient(client);
+    client.disconnect();
+    void client.query({ kinds: [1] }).catch(() => undefined);
+    expect(sockets).toHaveLength(2);
+    client.dispose();
+  });
+});
