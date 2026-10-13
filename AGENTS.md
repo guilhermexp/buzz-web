@@ -16,6 +16,13 @@ Align the existing interface with Buzz Desktop without sacrificing browser/mobil
 Separate browser-and-Relay features from operations requiring a remote runtime. A comparison or
 demo is not feature acceptance; do not claim desktop parity from screenshots or fixture tests.
 
+The owner authorized the full backlog, including voice and necessary companion-backend work,
+on 2026-10-13. The implementation contract is
+[complete-web-desktop-parity](openspec/changes/complete-web-desktop-parity/proposal.md);
+its specs and checklist control completeness. The earlier comparison's priorities are ordering,
+not permission to omit features. Backend changes belong to the separately owned
+`guilhermexp/buzz` worktree/ticket, never the read-only reference or upstream repositories.
+
 ## Project Boundary
 
 Buzz Web is a browser client for an existing Buzz Relay. Keep these boundaries explicit:
