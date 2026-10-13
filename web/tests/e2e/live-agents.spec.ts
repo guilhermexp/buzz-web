@@ -13,6 +13,7 @@ import {
   type LiveIdentity,
   liveRelayUrl,
   openChannel,
+  reloadAndUnlock,
 } from "./support/live-session";
 import { NodeRelayClient } from "./support/node-relay";
 
@@ -253,6 +254,96 @@ test("owner creates, observes, controls and removes a real managed agent", async
     await expect(panel.getByTestId("agent-history-sessions").locator("li").first()).toBeVisible({
       timeout: 60_000,
     });
+    await expect(panel.getByText(/Sessions this browser observed live/)).toBeVisible();
+
+    // 3b. Persistence where promised: the browser-local archive survives reload + unlock and a
+    // forced relay reconnect; durable sources (relay-stored reply, agent-control logs) stay reachable.
+    const openAgentActivity = async () => {
+      await openAgents(page);
+      await tool
+        .getByRole("button", { name: `Manage ${agentName}` })
+        .first()
+        .click();
+      await panel.getByRole("tab", { name: "Activity" }).click();
+      const sessions = panel.getByTestId("agent-history-sessions");
+      await expect(sessions.locator("li").first()).toBeVisible({ timeout: 30_000 });
+      await expect(sessions).toContainText(`#${channelName}`);
+      return sessions;
+    };
+    const archivedFrames = (scopeOwner: string) =>
+      page.evaluate(
+        async ({ scope }) => {
+          const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+          const request = indexedDB.open("buzz-agent-observer-archive");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+          const db = await promise;
+          const count = Promise.withResolvers<number>();
+          const index = db.transaction("frames").objectStore("frames").index("scope_received");
+          const counted = index.count(
+            IDBKeyRange.bound([scope, 0], [scope, Number.MAX_SAFE_INTEGER]),
+          );
+          counted.onsuccess = () => count.resolve(counted.result);
+          counted.onerror = () => count.reject(counted.error);
+          const value = await count.promise;
+          db.close();
+          return value;
+        },
+        { scope: `${liveRelayUrl()}|${scopeOwner}` },
+      );
+    const ownerFramesBefore = await archivedFrames(admin.pubkey);
+    expect(ownerFramesBefore).toBeGreaterThan(0);
+    await reloadAndUnlock(page, admin);
+    const afterReload = await openAgentActivity();
+    await afterReload.locator("li").first().getByRole("button").first().click();
+    await expect(afterReload.locator("li").first().locator("ol > li").first()).toBeVisible();
+    await context.setOffline(true);
+    await page.waitForTimeout(3_000);
+    await context.setOffline(false);
+    await expect(
+      page.getByRole("button", { name: "Profile menu" }).getByRole("img", { name: "Connected" }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(panel.getByTestId("agent-history-sessions")).toContainText(`#${channelName}`);
+    await panel.getByRole("tab", { name: "Logs" }).click();
+    await expect(panel.getByTestId("agent-runtime-logs")).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: path.join(EVIDENCE, "agents-history-after-reload-desktop.png") });
+    const ownerFramesAfter = await archivedFrames(admin.pubkey);
+    expect(ownerFramesAfter).toBeGreaterThanOrEqual(ownerFramesBefore);
+
+    // 3c. Another identity on the same browser profile gets none of the owner's archive.
+    await page.getByRole("button", { name: "Profile menu" }).click();
+    await page.getByRole("menuitem", { name: "Switch identity" }).click();
+    await importIdentity(page, member);
+    expect(await archivedFrames(member.pubkey)).toBe(0);
+    expect(await archivedFrames(admin.pubkey)).toBe(ownerFramesAfter);
+    await openAgents(page);
+    // The agent is publicly discoverable, but nothing owner-private is offered to this identity.
+    await tool
+      .getByRole("button", { name: `Manage ${agentName}` })
+      .first()
+      .click();
+    await expect(panel.getByRole("tab", { name: "Activity" })).toHaveCount(0);
+    await expect(panel.getByRole("tab", { name: "Usage" })).toHaveCount(0);
+    await expect(panel.getByRole("tab", { name: "Memory" })).toHaveCount(0);
+    await expect(panel.getByText("Managed by you")).toHaveCount(0);
+    await page.screenshot({
+      path: path.join(EVIDENCE, "agents-history-other-identity-desktop.png"),
+    });
+    await page.getByRole("button", { name: "Profile menu" }).click();
+    await page.getByRole("menuitem", { name: "Switch identity" }).click();
+    await page.locator(`input[name="saved-identity"][value="${admin.pubkey}"]`).check();
+    await page.getByLabel("Vault passphrase").fill(admin.vaultPassphrase);
+    await page.getByRole("button", { name: "Unlock" }).click();
+    await expect(page.getByRole("button", { name: "Profile menu" })).toBeVisible();
+    await openAgentActivity();
+    log.history = {
+      ownerFramesBefore,
+      ownerFramesAfterReloadAndReconnect: ownerFramesAfter,
+      otherIdentityFrames: 0,
+      replyInArchiveAfterReload: true,
+      logsReachableAfterReconnect: true,
+    };
+    await panel.getByRole("tab", { name: "Overview" }).click();
     await panel.getByRole("tab", { name: "Usage" }).click();
     await expect(async () => {
       await panel.getByRole("tab", { name: "Memory" }).click();
@@ -384,6 +475,9 @@ test("owner creates, observes, controls and removes a real managed agent", async
     await page.keyboard.press("Escape");
     await openChannel(page, channelName);
     await expect(page.getByText(`please reply ${run}`).first()).toBeVisible();
+    // The (threaded) reply is relay-stored and durable independently of the browser archive.
+    const durableReply = await adminRelay.query([{ ids: [reply?.id ?? ""] }]);
+    expect(durableReply[0]?.content).toContain("[synthetic stub LLM] automated reply");
     await archiveChannel(page, channelName);
   } finally {
     evidence("lifecycle.json", log);
