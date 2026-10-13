@@ -4,6 +4,18 @@ This file defines repository-wide rules for coding agents and automated contribu
 contributors should also read [CONTRIBUTING.md](CONTRIBUTING.md). Instructions in a more deeply
 nested `AGENTS.md`, if one is added later, take precedence for that subtree.
 
+## Fork Direction
+
+This is Guilherme's fork, `guilhermexp/buzz-web`, with `hardy4yooz/buzz-web` retained as
+`upstream`. Keep `main` as the integration branch and preserve upstream attribution.
+`block/buzz` is the desktop/protocol reference, not another source tree to bundle into this client.
+The baseline comparison and proposed priorities are in
+[Buzz desktop parity analysis](docs/buzz-parity-analysis.md).
+
+Align the existing interface with Buzz Desktop without sacrificing browser/mobile behavior.
+Separate browser-and-Relay features from operations requiring a remote runtime. A comparison or
+demo is not feature acceptance; do not claim desktop parity from screenshots or fixture tests.
+
 ## Project Boundary
 
 Buzz Web is a browser client for an existing Buzz Relay. Keep these boundaries explicit:
@@ -150,6 +162,20 @@ git diff --check
 ```
 
 If a check cannot run, report exactly which check and why. Do not describe unrun tests as passing.
+
+## Verification
+
+Use [Required Checks](#required-checks) for the component being changed. For UI work, inspect the
+actual surface at desktop and mobile widths. Use the project's existing demo only for presentation
+and interaction checks; it does not exercise a real Relay or agent runtime.
+Real collaboration changes also require the dedicated identities and cross-client checks in
+[P0 Real Relay Acceptance](docs/p0-relay-acceptance.md). Never use a primary identity as test data.
+
+### Build
+
+```json
+{"command": ["npm", "run", "build"], "cwd": "web"}
+```
 
 ## Documentation and Commits
 

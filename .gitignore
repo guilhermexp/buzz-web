@@ -18,3 +18,7 @@ node_modules/
 *.bak-*
 *.tmp
 *.swp
+
+# Local analysis, runtime evidence, and generated code graph
+/.tmp/
+/graft/

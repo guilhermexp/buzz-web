@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml)
+Upstream CI: [![CI](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml)
 
 Buzz Web is a standalone browser client for a [Buzz](https://github.com/block/buzz) Relay. It
 brings the core collaboration experience to any modern browser without bundling or modifying the
@@ -12,6 +12,17 @@ agents, presence, and NIP-34 repository browsing.
 > [!IMPORTANT]
 > This is an independent Web client, not an official Block product. It requires an existing Buzz
 > Relay and does not include the Relay, desktop application, mobile application, or an AI model.
+
+## Our fork
+
+This is [guilhermexp/buzz-web](https://github.com/guilhermexp/buzz-web), a fork of
+[hardy4yooz/buzz-web](https://github.com/hardy4yooz/buzz-web). We are comparing the browser client
+with Buzz Desktop to align the interface and identify useful browser-native tools.
+See [the pinned comparison and proposed priorities](docs/buzz-parity-analysis.md).
+The comparison is not a claim of full parity or newly implemented features.
+
+Inbox already signs approval/denial events. At the compared Buzz revision, the workflow engine
+still rejects approval-gated execution; see the analysis before relying on that end-to-end flow.
 
 ## Current Scope
 

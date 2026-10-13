@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml)
+上游 CI：[![CI](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hardy4yooz/buzz-web/actions/workflows/ci.yml)
 
 Buzz Web 是一个连接 [Buzz](https://github.com/block/buzz) Relay 的独立浏览器客户端。它
 不打包、也不修改 Relay，即可在现代浏览器中提供频道、私聊、线程、Reaction、搜索、
@@ -11,6 +11,17 @@ Buzz Web 是一个连接 [Buzz](https://github.com/block/buzz) Relay 的独立�
 > [!IMPORTANT]
 > 这是一个独立 Web 客户端，不是 Block 官方产品。使用前必须已有 Buzz Relay；本仓库
 > 不包含 Relay、桌面客户端、移动客户端或 AI 模型。
+
+## 我们的 Fork
+
+本仓库是 [guilhermexp/buzz-web](https://github.com/guilhermexp/buzz-web)，Fork 自
+[hardy4yooz/buzz-web](https://github.com/hardy4yooz/buzz-web)。我们正在将浏览器客户端与
+Buzz Desktop 进行比较，以对齐界面并识别有用的浏览器原生工具。
+详见[固定版本的比较与建议优先级](docs/buzz-parity-analysis.md)。
+该分析不表示已实现新功能，也不表示与桌面端完全一致。
+
+Inbox 已支持签名并发布批准／拒绝事件。但在本次比较的 Buzz 版本中，Workflow 引擎仍不支持
+需要审批才能继续执行的流程。依赖此端到端流程前，请先阅读分析中的限制说明。
 
 ## 当前能力
 
