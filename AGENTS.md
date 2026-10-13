@@ -181,7 +181,7 @@ Real collaboration changes also require the dedicated identities and cross-clien
 ### Build
 
 ```json
-{"command": ["npm", "run", "build"], "cwd": "web"}
+{"command": {"argv": ["npm", "run", "build"], "cwd": "web"}}
 ```
 
 ## Documentation and Commits
