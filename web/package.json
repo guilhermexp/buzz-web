@@ -18,6 +18,7 @@
     "test:e2e": "npm run build:e2e && playwright test",
     "test:e2e:smoke": "npm run build:e2e && playwright test --project=smoke",
     "test:e2e:live-p0": "playwright test --config=playwright.live.config.ts",
+    "test:e2e:live-voice": "playwright test --config=playwright.live-voice.config.ts",
     "build:e2e": "VITE_ENABLE_DEMO=true tsc && VITE_ENABLE_DEMO=true vite build"
   },
   "dependencies": {
