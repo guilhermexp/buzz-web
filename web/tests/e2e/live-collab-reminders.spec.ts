@@ -38,11 +38,14 @@ async function screenshot(page: Page, name: string) {
 async function openSession(browser: Browser, identity: LiveIdentity, mobile = false) {
   const context = await browser.newContext({
     timezoneId,
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    // The frozen importIdentity helper asserts the sidebar's "Profile menu", which the closed
+    // mobile drawer hides; import at desktop width, then switch to the 390px mobile layout.
+    viewport: { width: 1440, height: 900 },
     ...(mobile ? { isMobile: true, hasTouch: true } : {}),
   });
   const page = await context.newPage();
   await importIdentity(page, identity);
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   return { context, page };
 }
 
