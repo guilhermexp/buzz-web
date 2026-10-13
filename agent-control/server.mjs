@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { WebSocketServer } from "ws";
 import { AgentService } from "./agents.mjs";
 import { loadConfig } from "./config.mjs";
@@ -9,11 +10,11 @@ import {
   HttpError,
   normalizeRelayUrl,
   parseJsonObject,
-  pruneSeenEventIds,
   readRequestBody,
   verifyNip98Request,
 } from "./lib.mjs";
 import { McpService } from "./mcp.mjs";
+import { ReplayStore } from "./replay.mjs";
 import { StateStore } from "./state.mjs";
 import { TerminalService, TicketStore } from "./terminal.mjs";
 import { MAX_FILE_BYTES, WorkspaceService } from "./workspaces.mjs";
@@ -49,7 +50,8 @@ const agents = new AgentService({
   llm: config.llm,
   log,
 });
-const seenEventIds = new Map();
+// Durable: a restart must not let a captured request be replayed inside its freshness window.
+const seenEventIds = new ReplayStore(join(config.stateDir, "replay.json"));
 /** Every owner|community|capability granted since start: losing one is a revocation. */
 const everGranted = new Set();
 
@@ -117,7 +119,6 @@ function requireCapability(ctx, capability, workspaceId) {
 }
 
 function authenticate(request, body) {
-  pruneSeenEventIds(seenEventIds);
   const owner = verifyNip98Request({
     authorization: request.headers.authorization,
     method: request.method,

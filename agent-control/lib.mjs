@@ -48,7 +48,8 @@ export function sha256Hex(value) {
 /**
  * Verify a NIP-98 request: kind 27235 signature, |Δt| ≤ freshness, exact `u`, `method`,
  * `payload` = sha256(body) (an empty body hashes the empty string), a `nonce`, and a
- * not-yet-seen event id. Returns the signer pubkey. The caller authorizes that pubkey.
+ * not-yet-seen event id. `seenEventIds` is any `{has, set}` store (the service uses the durable
+ * `ReplayStore`). Returns the signer pubkey. The caller authorizes that pubkey.
  */
 export function verifyNip98Request({
   authorization,
@@ -79,12 +80,6 @@ export function verifyNip98Request({
   }
   seenEventIds.set(event.id, event.created_at + freshnessSeconds);
   return String(event.pubkey).toLowerCase();
-}
-
-export function pruneSeenEventIds(seenEventIds, nowSeconds = Math.floor(Date.now() / 1000)) {
-  for (const [eventId, expiresAt] of seenEventIds) {
-    if (expiresAt < nowSeconds) seenEventIds.delete(eventId);
-  }
 }
 
 /** NIP-OA preimage the owner signs to authorize `agentHex` without conditions. */

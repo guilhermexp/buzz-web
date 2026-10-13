@@ -14,7 +14,10 @@ The legacy `POST /start` systemd endpoint was removed; `/v1/agents` replaces it.
 
 - Every `/v1` request is NIP-98 signed: kind 27235, exact `u` (full URL **including the query**),
   `method`, `payload` = sha256 of the body (empty body included), a `nonce`, |Δt| ≤ 60 s. Event
-  ids are remembered for replay rejection (`409 replayed`).
+  ids are persisted in `STATE_DIR/replay.json` (fsync + atomic rename **before** the request is
+  served, pruned past the freshness window, bounded) so replays are rejected (`409 replayed`)
+  across restarts too. An unreadable or malformed replay file stops the service from starting; a
+  failed write or a full cache rejects the request with `503` (fail closed).
 - Every request names its community with `?relay=<relay url>`; resources are bound to
   owner + community and invisible (`404`) to anyone else.
 - Authority comes from the operator **grants file** (below), reloaded live. Removing a grant or
@@ -111,7 +114,7 @@ Web runtime configuration: `{"agentControlUrl": "https://buzz.example.com/app/ap
 
 ```bash
 npm ci
-npm test          # node --test: NIP-98, replay, grants/live reload, paths, tickets, config, logs
+npm test          # node --test: NIP-98, durable replay across restart, grants/live reload, paths, tickets, config, logs
 npm start
 ```
 
@@ -125,7 +128,10 @@ The live browser acceptance lives in `web/tests/e2e/live-remote.spec.ts`
 
 ## Operational notes
 
-- Replay tracking is in-memory; run one replica or add a shared TTL store.
-- Terminal sessions and MCP processes do not survive a service restart; containers, files and
-  agents do (agents' forwarding sockets are recreated on start).
+- The replay cache is durable but local to one `STATE_DIR`: run one replica, or replace it with a
+  shared TTL store before scaling out.
+- Terminal tickets, PTY sessions and MCP processes are in-memory and fail closed on restart:
+  outstanding tickets become invalid, reconnects get `410 session_gone`, and the processes are
+  gone with their exec sessions. Containers, files and agents survive (agents' forwarding sockets
+  are recreated on start).
 - Agent online/offline comes from Relay presence; `running` means Docker reports the container up.
