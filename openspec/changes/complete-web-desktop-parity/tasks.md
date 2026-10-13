@@ -29,7 +29,7 @@
 
 ## 4. Agent operations and catalogs
 
-- [x] 4.1 Preserve live observers and add real authorized durable history/session/log inspection; verify a real task's live and historical outcomes without inventing persistence for ephemeral frames.
+- [ ] 4.1 Preserve live observers and add real authorized durable history/session/log inspection; verify a real task's live and historical outcomes without inventing persistence for ephemeral frames.
 - [x] 4.2 Add owner-private metrics/cost and memory surfaces; verify authorized decryption and rejection/absence for a different member, adding tests/docs.
 - [x] 4.3 Implement real remote agent registration/create/configure/start/stop/restart/remove with current authority and secret-safe state; verify actual process transitions, cleanup, presence and replay rejection, adding tests/docs.
 - [x] 4.4 Implement persona/team catalog CRUD, sharing, import/export and runtime application; verify persistence, sanitized shared projections and private-entry isolation, adding tests/docs.
@@ -62,34 +62,53 @@
 
 - [x] 8.1 Implement opt-in subscription/revocation and private backend storage with service-worker support; prove denied/revoked enrollment and document deployment prerequisites.
 - [x] 8.2 Implement actual push delivery for eligible events; observe a real browser notification with the app tab closed rather than substitute an in-tab event or mock provider.
-- [x] 8.3 Implement notification navigation and stale-enrollment retirement; prove exact scoped event navigation and removal/sign-out privacy, adding tests/docs.
+- [ ] 8.3 Implement notification navigation and stale-enrollment retirement; prove exact scoped event navigation and removal/sign-out privacy, adding tests/docs.
 
 ## 9. Remote workspace tools
 
 - [x] 9.1 Implement a real authorized workspace PTY with input/output/resize/cancel/reconnect and bounded lifecycle; prove actual command effects and process cleanup, adding tests/docs.
 - [x] 9.2 Implement scoped files and upload/download/edit operations; prove allowed persistence and path/symlink-escape rejection, adding tests/docs.
 - [x] 9.3 Implement authorized MCP tool connection/invocation/result/error/cancel; prove real workspace effects and rejection for another owner, adding tests/docs.
-- [x] 9.4 Prove owner/community/workspace binding, replay rejection, revocation and secret-safe output across terminal/files/tools; no unrestricted host-global proxy is acceptable.
+- [ ] 9.4 Prove owner/community/workspace binding, replay rejection, revocation and secret-safe output across terminal/files/tools; no unrestricted host-global proxy is acceptable.
 
 ## 10. Integrated completion
 
 - [ ] 10.1 Run the frozen component code gates, production builds and real-Relay/runtime/browser/audio acceptance at the final paired revisions; record every requested item's status and exact evidence/limits.
 - [ ] 10.2 Reconcile docs/changelog and supported web/backend deployment pair, commit all scoped changes on the owned feature branches and deliver reports, logs, screenshots/audio and reproducible verification instructions to Main.
 
-## Open items (2026-10-13 run)
+## Open items and repair/proof tasks (turn 4, 2026-10-13)
 
-- 1.3: backend RED→GREEN is complete (`e2e_workflow_approval` 4/4). The frozen web witness passes
-  its voice-note test, and every huddle assertion passes, but it cannot exit 0 because the frozen
-  support helper `NativeHuddlePeer.close()` never settles `streamTone()`; a minimal fix awaits
-  Main's authorization (see the web run report).
-- 2.2: formatting, mentions, drafts, IME guards and keyboard sending are implemented and verified
-  web-to-web against a real Relay, with event content checked against the desktop Markdown and tag
-  contract. No Buzz Desktop runtime was available, so web-to-desktop rendering is unverified.
-- 2.3: emoji, custom emoji (NIP-30) and clipboard/drop attachments are verified live. GIF results
-  need the operator's KLIPY key (the Relay hard-codes the provider), so only the explained
-  unavailable state is verified.
-- 10.1/10.2: see the run reports for gate results, known environment failures and the remaining
-  witness decision.
+Turn-3 checkmarks overstated completion where noted below; these tasks reopen the gaps.
+
+- [x] R1 Apply the Main-authorized `NativeHuddlePeer.close()` fix (settle the pending tone stream)
+  and verify the deterministic repro before/after.
+- [x] R2 Scope the voice-note witness to the run's unique channel (Relay 39000 → `#h`) without
+  weakening assertions; prove two concurrent runs fail before and pass after.
+- [x] R3 Commit the witness repairs and hand Main a RECAPTURE-READY record (commit, paths, digests,
+  focused command, setup).
+- [ ] R4 (1.3) Main recaptures the corrected witness against the RED baseline and runs the exact GREEN
+  command against the implementation.
+- [ ] R5 (10.1) Make the full backend gate pass with a declared isolated environment: task-local
+  Git ≥ 2.46 from an official release, isolated test database, deterministic composition-log test,
+  root-caused git-sign-nostr invalid OA key test; run fmt/clippy/workspace tests once at the final SHA.
+- [ ] R6 (2.2) Prove web-to-desktop rendering of formatting, mentions and attachments on the real
+  Buzz Desktop app built from source with isolated profiles and the task Relay.
+- [ ] R7 (2.3) Finish GIF configuration/error paths and the success-path test; actual GIF results stay
+  unproven until an operator-approved KLIPY test key exists (exact prerequisite and injection
+  recipe in `docs/p0-relay-acceptance.md`).
+- [ ] R8 (8.3) Prove a real displayed notification click (not an injected service-worker message)
+  navigates to the exact authorized community/channel/event, with tab closed and open, and rechecks
+  access after removal.
+- [ ] R9 (4.1) Prove observed agent history survives reload/reconnect for the owner, stays scoped to
+  relay and owner, and is labelled browser-local (the Relay stores no 24200 frames).
+- [ ] R10 (9.4) Persist Agent Control's NIP-98 replay cache so replay rejection survives a restart.
+- [ ] R11 (10.2) Re-run invalidated captures at the final paired snapshots and refresh reports.
+
+Evidence scope labels: audio acceptance is synthetic (fake capture devices and generated tones), not
+physical microphone/speaker proof; agent runs use a synthetic stub model, proving process/control-plane
+behavior but not model inference; observed agent history is browser-local; Agent Control tickets and
+PTY sessions are in-memory and fail closed on restart; push was exercised with Firefox and Mozilla
+autopush only.
 
 ## Workflow follow-up
 
