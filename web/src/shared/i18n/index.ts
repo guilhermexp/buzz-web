@@ -1,6 +1,8 @@
+import { featureMessages } from "@/shared/i18n/messages";
+
 export type AppLocale = "en" | "zh-CN";
 
-const messages = {
+const coreMessages = {
   "app.title": { en: "Buzz Web", "zh-CN": "Buzz Web" },
   "common.agent": { en: "Agent", "zh-CN": "Agent" },
   "common.cancel": { en: "Cancel", "zh-CN": "取消" },
@@ -771,6 +773,10 @@ const messages = {
     "zh-CN": "无法加载 Web 配置 ({status})",
   },
 } as const;
+
+// Feature-owned copy lives in `shared/i18n/messages/<feature>.ts`; every entry
+// is typed to require both locales (see `defineMessages`).
+const messages = { ...coreMessages, ...featureMessages } as const;
 
 export type MessageKey = keyof typeof messages;
 
