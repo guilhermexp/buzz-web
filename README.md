@@ -137,9 +137,9 @@ The Playwright suite covers explicit English and Simplified Chinese browser loca
 desktop and mobile interaction paths.
 
 Real-Relay acceptance suites live next to the demo suite as `web/playwright.live*.config.ts`
-(`live` for P0, plus `live-uishell`, `live-composer`, `live-collab`, `live-agents`, `live-projects`,
-`live-workflows`, `live-voice`, `live-voice-controls`, `live-push` and `live-remote`). They need
-dedicated test identities and the companion Relay; see
+(`live` for P0, plus `live-uishell`, `live-composer`, `live-gif`, `live-collab`, `live-agents`,
+`live-projects`, `live-workflows`, `live-voice`, `live-voice-controls`, `live-push`,
+`live-push-click` and `live-remote`). They need dedicated test identities and the companion Relay; see
 [P0 Real Relay Acceptance](docs/p0-relay-acceptance.md) for the environment each one reads.
 
 ## Production Deployment

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { TIMELINE_KINDS } from "@/features/chat/lib/chat-model";
 import { useWorkspace } from "@/features/chat/lib/workspace-context";
 import {
   type BuzzDeepLink,
@@ -96,6 +97,13 @@ export function PushNotificationBridge() {
       fetchEvent: async (eventId) =>
         (await client.query({ ids: [eventId], limit: 1 })).find((event) => event.id === eventId) ??
         null,
+      // The Relay refuses (CLOSED restricted) timelines this identity can no
+      // longer read; any failure keeps the link closed.
+      canReadChannel: (channelId) =>
+        client.query({ kinds: TIMELINE_KINDS, "#h": [channelId], limit: 1 }).then(
+          () => true,
+          () => false,
+        ),
     })
       .then((resolution) => {
         if (resolution.kind === "open") {

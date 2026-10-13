@@ -130,8 +130,8 @@ npm test
 Playwright 除桌面和移动交互外，还会显式验证英文及简体中文浏览器 locale。
 
 真实 Relay 验收套件与演示套件并列，配置为 `web/playwright.live*.config.ts`（P0 使用 `live`，另有
-`live-uishell`、`live-composer`、`live-collab`、`live-agents`、`live-projects`、`live-workflows`、
-`live-voice`、`live-voice-controls`、`live-push` 和 `live-remote`）。它们需要专用测试身份和配套
+`live-uishell`、`live-composer`、`live-gif`、`live-collab`、`live-agents`、`live-projects`、`live-workflows`、
+`live-voice`、`live-voice-controls`、`live-push`、`live-push-click` 和 `live-remote`）。它们需要专用测试身份和配套
 Relay；各套件读取的环境变量见 [P0 真实 Relay 验收](docs/p0-relay-acceptance.zh-CN.md)。
 
 ## 生产部署

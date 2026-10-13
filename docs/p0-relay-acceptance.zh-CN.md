@@ -60,6 +60,7 @@ npm run test:e2e:live-p0
 | `playwright.live-voice.config.ts` | Huddle 音频、静音、离开、撤销；语音消息 | 配套 Relay，原生协议对端需要 `ffmpeg` 和 `libopus` |
 | `playwright.live-voice-controls.config.ts` | 拒绝权限、关闭收听、设备丢失、重连、Firefox | 配套 Relay |
 | `playwright.live-push.config.ts` | 关闭全部应用标签页后的 Web Push、深链接、静音 | 配置了 VAPID 的 Relay、Firefox，以及可访问推送服务的网络 |
+| `playwright.live-push-click.config.ts` | 用指针点击已显示的通知：关闭应用标签页时打开确切事件、复用已打开的标签页、拒绝显示后被移出的频道 | 与 `live-push` 相同，另需 X 显示（`xvfb-run`）、`xdotool` 和 ImageMagick `import`；Firefox 以有界面模式运行并使用自身的提醒窗口 |
 | `playwright.live-remote.config.ts` | 远程终端、文件、MCP、撤销 | 具有 `terminal`/`files`/`mcp` 授权且授权文件可写（`BUZZ_LIVE_REMOTE_GRANTS_FILE`）的 Agent Control |
 
 功能套件会把截图和证据日志写入 Playwright 输出目录或被忽略的 `.tmp/` 目录（各 spec 顶部注明覆盖变量）。

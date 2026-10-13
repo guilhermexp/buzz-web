@@ -13,7 +13,9 @@ export type DeepLinkResolution =
  * Decide where a notification link may navigate for the CURRENT community
  * and identity. Nothing cached is trusted: the event is re-read from the
  * relay, which enforces read authorization, and must belong to the linked
- * channel. Links for another community never touch this session's data.
+ * channel. The channel list is a snapshot from connect time, so a channel is
+ * only opened without its event when the relay still lets this identity read
+ * it now. Links for another community never touch this session's data.
  */
 export async function resolveDeepLink(
   link: BuzzDeepLink,
@@ -21,21 +23,25 @@ export async function resolveDeepLink(
     relayUrl: string;
     channels: BuzzChannel[];
     fetchEvent: (eventId: string) => Promise<NostrEvent | null>;
+    /** The relay's current read verdict for the channel's timeline. */
+    canReadChannel: (channelId: string) => Promise<boolean>;
   },
 ): Promise<DeepLinkResolution> {
   if (!sameRelay(link.relayUrl, session.relayUrl)) {
     return { kind: "other-community", relayUrl: link.relayUrl };
   }
   const channel = session.channels.find((candidate) => candidate.id === link.channelId);
-  const channelReadable = Boolean(channel && (channel.isMember || channel.visibility === "open"));
+  const listed = Boolean(channel && (channel.isMember || channel.visibility === "open"));
   if (!link.eventId) {
-    return channelReadable
+    return listed && (await session.canReadChannel(link.channelId))
       ? { kind: "open", channelId: link.channelId, eventId: null, threadRootId: null }
       : { kind: "no-access" };
   }
   const event = await session.fetchEvent(link.eventId);
   if (!event) {
-    return channelReadable ? { kind: "missing", channelId: link.channelId } : { kind: "no-access" };
+    return listed && (await session.canReadChannel(link.channelId))
+      ? { kind: "missing", channelId: link.channelId }
+      : { kind: "no-access" };
   }
   if (event.id !== link.eventId || tagValue(event, "h") !== link.channelId) {
     return { kind: "no-access" };

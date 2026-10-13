@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { type BrowserContext, expect, firefox, type Page, test } from "@playwright/test";
+import { expect, firefox, test } from "@playwright/test";
 import {
   browserEnvironment,
   identityFromEnvironment,
@@ -10,160 +9,26 @@ import {
   openChannel,
 } from "./support/live-session";
 import { NodeRelayClient } from "./support/node-relay";
+import {
+  addChannelMember,
+  archiveChannels,
+  createChannel,
+  delay,
+  evidenceLog,
+  mention,
+  openNotificationSettings,
+  PUSH_FIREFOX_PREFS,
+  publish,
+  readWorkerState,
+  waitForReceived,
+} from "./support-push/push-live";
 
 // Real background delivery: relay → RFC 8291/8292 Web Push → Mozilla autopush
 // (internet) → Firefox service worker, with every app tab closed.
 
 const EVIDENCE_DIR = resolve(process.env.BUZZ_PUSH_EVIDENCE_DIR ?? "../.tmp/push");
 const EVIDENCE_LOG = resolve(EVIDENCE_DIR, "live-push-evidence.log");
-
-type SwState = {
-  notifications: Array<{ title: string; body: string; tag: string; url: string | null }>;
-  received: Array<{
-    receivedAt: number;
-    origin: string | null;
-    channel: string | null;
-    event: string | null;
-    kind: number | null;
-    shown: boolean;
-    url: string | null;
-    error?: string;
-  }>;
-  subscribed: boolean;
-};
-
-async function evidence(step: string, detail: Record<string, unknown> = {}) {
-  await appendFile(
-    EVIDENCE_LOG,
-    `${JSON.stringify({ at: new Date().toISOString(), step, ...detail })}\n`,
-  );
-}
-
-function delay(ms: number): Promise<void> {
-  const { promise, resolve: done } = Promise.withResolvers<void>();
-  setTimeout(done, ms);
-  return promise;
-}
-
-/**
- * Read the worker's state from a same-origin document that is NOT the app
- * (the raw sw.js script), so no app tab exists while push is delivered.
- */
-async function readWorkerState(context: BrowserContext, baseURL: string): Promise<SwState> {
-  const probe = await context.newPage();
-  try {
-    await probe.goto(new URL("sw.js", baseURL).toString());
-    return await probe.evaluate(async (scope) => {
-      const registration = await navigator.serviceWorker.getRegistration(scope);
-      const notifications = registration ? await registration.getNotifications() : [];
-      const subscription = await registration?.pushManager.getSubscription();
-      const received = await new Promise<SwState["received"]>((done, fail) => {
-        const open = indexedDB.open("buzz-push", 1);
-        open.onupgradeneeded = () => {
-          open.result.createObjectStore("enrollments", { keyPath: "origin" });
-          open.result.createObjectStore("received", { autoIncrement: true });
-        };
-        open.onerror = () => fail(open.error);
-        open.onsuccess = () => {
-          const request = open.result.transaction("received").objectStore("received").getAll();
-          request.onsuccess = () => {
-            open.result.close();
-            done(request.result);
-          };
-          request.onerror = () => fail(request.error);
-        };
-      });
-      return {
-        notifications: notifications.map((notification) => ({
-          title: notification.title,
-          body: notification.body,
-          tag: notification.tag,
-          url: typeof notification.data?.url === "string" ? notification.data.url : null,
-        })),
-        received,
-        subscribed: Boolean(subscription),
-      };
-    }, new URL("./", baseURL).pathname);
-  } finally {
-    await probe.close();
-  }
-}
-
-async function waitForReceived(
-  context: BrowserContext,
-  baseURL: string,
-  eventId: string,
-  timeoutMs = 180_000,
-): Promise<SwState> {
-  const deadline = Date.now() + timeoutMs;
-  let state = await readWorkerState(context, baseURL);
-  while (!state.received.some((entry) => entry.event === eventId) && Date.now() < deadline) {
-    await delay(5_000);
-    state = await readWorkerState(context, baseURL);
-  }
-  return state;
-}
-
-async function openNotificationSettings(page: Page) {
-  await page.keyboard.press("Control+,");
-  const settings = page.getByTestId("workspace-tool-settings");
-  await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: "Notifications", exact: true }).click();
-  return settings.getByRole("region", { name: "Notifications" });
-}
-
-/** Publish as the sender, waiting out the shared relay's per-identity rate limit. */
-async function publish(
-  admin: NodeRelayClient,
-  secretKey: Uint8Array,
-  kind: number,
-  tags: string[][],
-  content = "",
-) {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await admin.publish(
-        { kind, created_at: Math.floor(Date.now() / 1000), content, tags },
-        secretKey,
-      );
-    } catch (error) {
-      const retry = String(error).match(/rate-limited.*retry in (\d+)s/);
-      if (!retry || attempt >= 10) throw error;
-      await delay((Number(retry[1]) + 1) * 1000);
-    }
-  }
-}
-
-async function createChannel(admin: NodeRelayClient, secretKey: Uint8Array, name: string) {
-  const id = randomUUID();
-  await publish(admin, secretKey, 9007, [
-    ["h", id],
-    ["name", name],
-    ["visibility", "private"],
-    ["channel_type", "stream"],
-    ["about", "Automated push acceptance; safe to archive."],
-  ]);
-  return id;
-}
-
-async function mention(
-  admin: NodeRelayClient,
-  secretKey: Uint8Array,
-  channelId: string,
-  pubkey: string,
-  text: string,
-) {
-  return publish(
-    admin,
-    secretKey,
-    9,
-    [
-      ["h", channelId],
-      ["p", pubkey],
-    ],
-    `${text} nostr:${pubkey}`,
-  );
-}
+const evidence = evidenceLog(EVIDENCE_LOG);
 
 test("background push reaches a closed Firefox tab and opens the exact event", async ({
   baseURL,
@@ -180,18 +45,10 @@ test("background push reaches a closed Firefox tab and opens the exact event", a
   const admin = await NodeRelayClient.connect(relayUrl, sender.secretKey);
   const sharedName = `push-shared-${Date.now().toString(36)}`;
   const shared = await createChannel(admin, sender.secretKey, sharedName);
-  await publish(admin, sender.secretKey, 9000, [
-    ["h", shared],
-    ["p", member.pubkey],
-    ["role", "member"],
-  ]);
+  await addChannelMember(admin, sender.secretKey, shared, member.pubkey);
   const controlName = `push-control-${Date.now().toString(36)}`;
   const controlChannel = await createChannel(admin, sender.secretKey, controlName);
-  await publish(admin, sender.secretKey, 9000, [
-    ["h", controlChannel],
-    ["p", member.pubkey],
-    ["role", "member"],
-  ]);
+  await addChannelMember(admin, sender.secretKey, controlChannel, member.pubkey);
   const hidden = await createChannel(
     admin,
     sender.secretKey,
@@ -205,11 +62,7 @@ test("background push reaches a closed Firefox tab and opens the exact event", a
     env: browserEnvironment(),
     viewport: { width: 1440, height: 900 },
     firefoxUserPrefs: {
-      "dom.push.enabled": true,
-      "dom.push.connection.enabled": true,
-      "dom.push.serverURL": "wss://push.services.mozilla.com/",
-      "dom.serviceWorkers.enabled": true,
-      "dom.webnotifications.enabled": true,
+      ...PUSH_FIREFOX_PREFS,
       "permissions.default.desktop-notification": 1,
       // Headless Firefox has no system notification daemon; use Firefox's own alerts.
       "alerts.useSystemBackend": false,
@@ -307,9 +160,9 @@ test("background push reaches a closed Firefox tab and opens the exact event", a
     await evidence("deep-link-resolved", { channel: shared, event: delivered.id });
 
     // Click with the app already open: the worker posts {type:"buzz-push-open", url}
-    // to the focused tab. Playwright cannot click OS notifications or dispatch
-    // notificationclick, so the page receives that exact message on
-    // navigator.serviceWorker (the bridge's listener) while Settings is showing.
+    // to the focused tab. This headless run cannot click the displayed alert, so
+    // the page receives that exact message on navigator.serviceWorker (the
+    // bridge's listener); live-push-click.spec.ts clicks the real alert window.
     await openNotificationSettings(opened);
     await expect(opened.getByRole("heading", { name: sharedName, exact: true })).toBeHidden();
     await opened.evaluate((url) => {
@@ -406,12 +259,7 @@ test("background push reaches a closed Firefox tab and opens the exact event", a
     });
   } finally {
     await context.close();
-    for (const channel of [shared, controlChannel, hidden]) {
-      await publish(admin, sender.secretKey, 9002, [
-        ["h", channel],
-        ["archived", "true"],
-      ]).catch(() => undefined);
-    }
+    await archiveChannels(admin, sender.secretKey, [shared, controlChannel, hidden]);
     admin.close();
   }
 });
@@ -437,11 +285,7 @@ test("denied notification permission shows blocked and enrolls nothing", async (
     env: browserEnvironment(),
     viewport: { width: 1440, height: 900 },
     firefoxUserPrefs: {
-      "dom.push.enabled": true,
-      "dom.push.connection.enabled": true,
-      "dom.push.serverURL": "wss://push.services.mozilla.com/",
-      "dom.serviceWorkers.enabled": true,
-      "dom.webnotifications.enabled": true,
+      ...PUSH_FIREFOX_PREFS,
       // 2 = block: the same state as a user choosing "Block" for the site.
       "permissions.default.desktop-notification": 2,
     },

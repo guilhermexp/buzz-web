@@ -67,6 +67,7 @@ and `BUZZ_LIVE_RELAY_URL` for direct protocol checks. Run each with
 | `playwright.live-voice.config.ts` | Huddle audio, mute, leave, revocation; voice notes | Companion Relay, `ffmpeg` and `libopus` for the native-wire peer |
 | `playwright.live-voice-controls.config.ts` | Denied permission, deafen, device loss, reconnect, Firefox | Companion Relay |
 | `playwright.live-push.config.ts` | Web Push with all app tabs closed, deep links, mutes | Relay with VAPID configured, Firefox, Internet access to the push service |
+| `playwright.live-push-click.config.ts` | Pointer click on the displayed notification: opens the exact event with app tabs closed, reuses an open tab, refuses channels removed after display | Same as `live-push`, plus an X display (`xvfb-run`), `xdotool` and ImageMagick `import`; Firefox runs headed with its own alert windows |
 | `playwright.live-remote.config.ts` | Remote terminal, files, MCP, revocation | Agent Control with `terminal`/`files`/`mcp` grants and a writable grants file (`BUZZ_LIVE_REMOTE_GRANTS_FILE`) |
 
 Feature suites write screenshots and evidence logs to the Playwright output directory or the

@@ -83,6 +83,9 @@ describe("resolveDeepLink", () => {
           ["e", ROOT, "", "root"],
         ]);
       },
+      canReadChannel: async () => {
+        throw new Error("the returned event already proves access");
+      },
     });
     expect(fetched).toEqual([EVENT]);
     expect(resolution).toEqual({
@@ -102,6 +105,9 @@ describe("resolveDeepLink", () => {
         fetchEvent: async () => {
           throw new Error("must not query");
         },
+        canReadChannel: async () => {
+          throw new Error("must not query");
+        },
       },
     );
     expect(resolution).toEqual({ kind: "other-community", relayUrl: "ws://127.0.0.1:47320" });
@@ -112,6 +118,7 @@ describe("resolveDeepLink", () => {
       relayUrl: RELAY,
       channels: [channel(CHANNEL, { isMember: false })],
       fetchEvent: async () => null,
+      canReadChannel: async () => true,
     });
     expect(resolution).toEqual({ kind: "no-access" });
   });
@@ -121,16 +128,42 @@ describe("resolveDeepLink", () => {
       relayUrl: RELAY,
       channels: [channel(CHANNEL), channel(OTHER_CHANNEL)],
       fetchEvent: async () => event([["h", OTHER_CHANNEL]]),
+      canReadChannel: async () => true,
     });
     expect(resolution).toEqual({ kind: "no-access" });
   });
 
   it("reports a deleted event in a readable channel and opens the channel", async () => {
+    const checked: string[] = [];
     const resolution = await resolveDeepLink(link, {
       relayUrl: RELAY,
       channels: [channel(CHANNEL)],
       fetchEvent: async () => null,
+      canReadChannel: async (id) => {
+        checked.push(id);
+        return true;
+      },
     });
+    expect(checked).toEqual([CHANNEL]);
     expect(resolution).toEqual({ kind: "missing", channelId: CHANNEL });
+  });
+
+  it("denies a channel the cached list still shows once the relay refuses reading it", async () => {
+    const stale = { channels: [channel(CHANNEL)], canReadChannel: async () => false };
+    expect(
+      await resolveDeepLink(link, { relayUrl: RELAY, ...stale, fetchEvent: async () => null }),
+    ).toEqual({ kind: "no-access" });
+    expect(
+      await resolveDeepLink(
+        { ...link, eventId: null },
+        {
+          relayUrl: RELAY,
+          ...stale,
+          fetchEvent: async () => {
+            throw new Error("channel links fetch no event");
+          },
+        },
+      ),
+    ).toEqual({ kind: "no-access" });
   });
 });
