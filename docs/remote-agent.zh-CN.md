@@ -6,6 +6,11 @@
 所有域名、路径、公钥和 unit 名均为示例。不要把 Nostr 私钥、Provider Key、Relay token、
 内部主机名或真实 Agent 环境文件提交到仓库、Issue、PR、日志或截图。
 
+> 本文是**手动**在主机上用 systemd 运行 Agent 的方式。若希望在 Buzz Web 中创建、授权、启动/停止
+> 受控 Agent（以及远程工作区终端、文件和 MCP 工具），请部署 Agent Control：它在 rootless
+> Docker 容器中运行 Agent，Agent 密钥只保存在服务端，原来的 `POST /start`/systemd 白名单接口已移除。
+> 见 [agent-control/README.md](../agent-control/README.md) 与 [deploy/README.md](../deploy/README.md)。
+
 ## 架构与数据边界
 
 ```text

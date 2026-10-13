@@ -1,0 +1,112 @@
+#!/bin/bash
+# Workspace-confined helpers executed INSIDE a Buzz remote workspace container by agent-control.
+# Paths are resolved here, in the container's own filesystem view, so symlinks are judged by
+# what they really point at. Exit codes: 3 path_escape, 4 not_found, 5 wrong_type,
+# 6 workspace_root, 7 write_failed, 2 usage.
+set -u
+ROOT=/workspace
+
+fail() {
+  printf '%s\n' "$2" >&2
+  exit "$1"
+}
+
+inside() {
+  case "$1" in "$ROOT" | "$ROOT"/*) return 0 ;; *) return 1 ;; esac
+}
+
+check_relative() {
+  case "$1" in /* | '~'*) fail 3 path_escape ;; esac
+  case "/$1/" in */../*) fail 3 path_escape ;; esac
+}
+
+# Fully resolved path (follows every symlink, including the last component).
+resolve_full() {
+  check_relative "$1"
+  local full
+  full=$(realpath -m -- "$ROOT/$1") || fail 3 path_escape
+  inside "$full" || fail 3 path_escape
+  printf '%s' "$full"
+}
+
+# Resolved parent directory + literal last component (the entry itself, not its target).
+resolve_entry() {
+  check_relative "$1"
+  local parent name real_parent
+  [ -n "$1" ] || fail 6 workspace_root
+  parent=$(dirname -- "$ROOT/$1")
+  name=$(basename -- "$1")
+  real_parent=$(realpath -m -- "$parent") || fail 3 path_escape
+  inside "$real_parent" || fail 3 path_escape
+  printf '%s/%s' "$real_parent" "$name"
+}
+
+cmd=${1:-}
+arg=${2:-}
+
+case "$cmd" in
+list)
+  target=$(resolve_full "$arg") || exit $?
+  [ -e "$target" ] || fail 4 not_found
+  [ -d "$target" ] || fail 5 not_a_directory
+  exec find "$target" -mindepth 1 -maxdepth 1 -printf '%y\t%s\t%T@\t%f\0'
+  ;;
+stat)
+  target=$(resolve_full "$arg") || exit $?
+  [ -e "$target" ] || fail 4 not_found
+  exec find "$target" -maxdepth 0 -printf '%y\t%s\t%T@'
+  ;;
+read)
+  target=$(resolve_full "$arg") || exit $?
+  [ -e "$target" ] || fail 4 not_found
+  [ -f "$target" ] || fail 5 not_a_file
+  exec cat -- "$target"
+  ;;
+write)
+  target=$(resolve_full "$arg") || exit $?
+  [ "$target" != "$ROOT" ] || fail 6 workspace_root
+  [ ! -d "$target" ] || fail 5 not_a_file
+  parent=$(dirname -- "$target")
+  mkdir -p -- "$parent" 2>/dev/null || fail 7 write_failed
+  # Re-check after creating directories: the parent must still really be inside the root.
+  real_parent=$(realpath -e -- "$parent") || fail 7 write_failed
+  inside "$real_parent" || fail 3 path_escape
+  final="$real_parent/$(basename -- "$target")"
+  tmp=$(mktemp -p "$real_parent" .buzz-upload.XXXXXX) || fail 7 write_failed
+  if ! cat >"$tmp"; then
+    rm -f -- "$tmp"
+    fail 7 write_failed
+  fi
+  mv -f -- "$tmp" "$final" || {
+    rm -f -- "$tmp"
+    fail 7 write_failed
+  }
+  exec find "$final" -maxdepth 0 -printf '%s'
+  ;;
+delete)
+  target=$(resolve_entry "$arg") || exit $?
+  [ "$target" != "$ROOT" ] || fail 6 workspace_root
+  [ -e "$target" ] || [ -L "$target" ] || fail 4 not_found
+  rm -rf -- "$target" || fail 7 write_failed
+  ;;
+wipe)
+  chmod -R u+rwX "$ROOT" 2>/dev/null
+  find "$ROOT" -mindepth 1 -delete 2>/dev/null
+  [ -z "$(find "$ROOT" -mindepth 1 -print -quit)" ] || fail 7 write_failed
+  ;;
+killsession)
+  # Kill every process in session $arg (a terminal or MCP server and all its descendants).
+  case "$arg" in '' | *[!0-9]*) fail 2 usage ;; esac
+  [ "$arg" -gt 1 ] || fail 2 usage
+  pkill -KILL -s "$arg" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    pgrep -s "$arg" >/dev/null || exit 0
+    sleep 0.1
+  done
+  pgrep -s "$arg" | wc -l
+  exit 7
+  ;;
+*)
+  fail 2 usage
+  ;;
+esac

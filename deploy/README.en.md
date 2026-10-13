@@ -15,11 +15,32 @@ Relay:
 | --- | --- | --- | --- |
 | External load balancer | `buzz.example.com` | all | private edge proxy |
 | Edge proxy | original Host | `/app`, `/app/*` | Web container port `3001` |
+| Edge proxy | original Host | `/app/api/agent-control/*` | optional Agent Control on host loopback |
 | Edge proxy | original Host | `/pair` | optional pairing sidecar |
 | Edge proxy | original Host | all other paths | Buzz Relay |
 
 WebSocket traffic, `/api/*`, `/git/*`, `/upload`, and `/media/*` continue to the Relay. The example
 [`Caddyfile.edge`](Caddyfile.edge) preserves the original Host and supports WebSocket upgrades.
+
+### Optional Agent Control
+
+Agent Control is not part of `compose.yml`: it drives a **rootless** Docker daemon and must never
+be given the system `/var/run/docker.sock` (it refuses it) or be run inside a container with a
+Docker socket. Run it on the host as the rootless-Docker user (for example a systemd *user* unit
+with `NoNewPrivileges=true`), listening on `127.0.0.1:8095`, with:
+
+- `DOCKER_HOST=unix:///run/user/<uid>/docker.sock` (rootless daemon), `BUZZ_BIN_DIR` with
+  `buzz`, `buzz-acp`, `buzz-agent`, `buzz-dev-mcp` built for Ubuntu 24.04 glibc;
+- `GRANTS_FILE` (owner → community relay URL → capabilities/workspaces; edits apply live and
+  revocation ends running sessions), `STATE_DIR` and `DATA_ROOT` on private storage;
+- `PUBLIC_BASE_URL=https://buzz.example.com/app/api/agent-control`, `ALLOWED_ORIGINS` set to the
+  Web origin, `TRUSTED_PROXY_IPS` set to the edge proxy;
+- model credentials in its own environment only (`AGENT_LLM_*`).
+
+TLS terminates at the load balancer/edge; never publish the listener directly. Workload containers
+get only their own data directory and read-only Buzz binaries — no Docker socket, host network or
+published ports. Then set `"agentControlUrl": "https://buzz.example.com/app/api/agent-control"` in
+`config.json`. Full reference: [agent-control/README.md](../agent-control/README.md).
 
 ## Start
 
