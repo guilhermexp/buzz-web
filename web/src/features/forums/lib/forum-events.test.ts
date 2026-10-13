@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { UserProfile } from "@/features/chat/lib/chat-types";
+import { AmbiguousMentionError } from "@/features/composer/lib/mention-bindings";
 import {
   forumCommentTemplate,
   forumDeleteTemplate,
+  forumEditMentions,
   forumEditTemplate,
   forumPostTemplate,
   forumReplyReference,
@@ -14,6 +17,11 @@ const ROOT = "a".repeat(64);
 const PARENT = "b".repeat(64);
 const ALICE = "1".repeat(64);
 const BOB = "2".repeat(64);
+const CAROL = "3".repeat(64);
+
+function profile(pubkey: string, name: string): UserProfile {
+  return { pubkey, name, about: "", picture: null, isAgent: false };
+}
 
 function event(partial: Partial<NostrEvent>): NostrEvent {
   return {
@@ -166,5 +174,40 @@ describe("nextPageCursor", () => {
     ];
     expect(nextPageCursor(page)).toEqual({ until: 40, beforeId: "2".repeat(64) });
     expect(nextPageCursor([])).toBeNull();
+  });
+});
+
+describe("forumEditMentions", () => {
+  const members = [ALICE, BOB, CAROL].map((pubkey) => ({ pubkey, role: "member" as const }));
+  const profiles = {
+    [ALICE]: profile(ALICE, "Alice"),
+    [BOB]: profile(BOB, "Bob"),
+    [CAROL]: profile(CAROL, "Carol"),
+  };
+
+  it("adds only members newly mentioned by the edit, never the editor", () => {
+    expect(
+      forumEditMentions({
+        previousContent: "hi @Bob",
+        content: "hi @Bob and @Carol, says @Alice",
+        members,
+        profiles,
+        editorPubkey: ALICE,
+      }),
+    ).toEqual([CAROL]);
+  });
+
+  it("rejects a typed name shared by several members instead of dropping it", () => {
+    const twins = { ...profiles, [CAROL]: profile(CAROL, "Bob") };
+    const edit = () =>
+      forumEditMentions({
+        previousContent: "hi",
+        content: "ping @Bob",
+        members,
+        profiles: twins,
+        editorPubkey: ALICE,
+      });
+    expect(edit).toThrow(AmbiguousMentionError);
+    expect(edit).toThrow(/@Bob is ambiguous/);
   });
 });

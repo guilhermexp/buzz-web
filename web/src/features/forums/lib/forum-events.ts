@@ -1,5 +1,14 @@
-import { buildMessageTags } from "@/features/chat/lib/chat-model";
-import type { AttachmentDescriptor } from "@/features/chat/lib/chat-types";
+import {
+  buildMessageTags,
+  memberMentionCandidates,
+  resolveMentionPubkeys,
+} from "@/features/chat/lib/chat-model";
+import type {
+  AttachmentDescriptor,
+  ChannelMember,
+  UserProfile,
+} from "@/features/chat/lib/chat-types";
+import { extractMentionPubkeys } from "@/features/composer/lib/mention-bindings";
 import type { EventTemplate, NostrEvent } from "@/shared/api/nostr-types";
 
 export const FORUM_POST_KIND = 45001;
@@ -58,6 +67,29 @@ export function forumCommentTemplate(
       input.extraTags,
     ),
   };
+}
+
+/**
+ * Members newly mentioned by an edit (the chat edit path): a typed name shared by
+ * several members throws the localized `AmbiguousMentionError` instead of silently
+ * notifying nobody. Mentions already in the previous content and the editor are excluded.
+ */
+export function forumEditMentions(input: {
+  previousContent: string;
+  content: string;
+  members: ChannelMember[];
+  profiles: Record<string, UserProfile>;
+  editorPubkey: string;
+}): string[] {
+  const previous = new Set(
+    resolveMentionPubkeys(input.previousContent, input.members, input.profiles),
+  );
+  const editor = input.editorPubkey.toLowerCase();
+  return extractMentionPubkeys(
+    input.content,
+    new Map(),
+    memberMentionCandidates(input.members, input.profiles),
+  ).filter((mention) => !previous.has(mention) && mention !== editor);
 }
 
 /** Kind 40003 in the web timeline's edit shape: media/emoji tags survive the edit. */

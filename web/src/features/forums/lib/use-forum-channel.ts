@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { messageRecipientPubkeys, resolveMentionPubkeys } from "@/features/chat/lib/chat-model";
+import { messageRecipientPubkeys } from "@/features/chat/lib/chat-model";
 import type { AttachmentDescriptor, BuzzChannel } from "@/features/chat/lib/chat-types";
 import { useWorkspace } from "@/features/chat/lib/workspace-context";
 import type { ComposerSendExtras } from "@/features/composer/lib/send-extras";
@@ -10,6 +10,7 @@ import {
   FORUM_POST_KIND,
   forumCommentTemplate,
   forumDeleteTemplate,
+  forumEditMentions,
   forumEditTemplate,
   forumPostTemplate,
   nextPageCursor,
@@ -309,10 +310,14 @@ export function useForumChannel(channel: BuzzChannel): ForumChannelData {
   const edit = useCallback(
     async (entry: ForumEntry, content: string): Promise<void> => {
       if (!content.trim() || content === entry.content) return;
-      const previous = new Set(resolveMentionPubkeys(entry.content, channel.members, profiles));
-      const addedMentions = resolveMentionPubkeys(content, channel.members, profiles).filter(
-        (mention) => !previous.has(mention) && mention !== pubkey.toLowerCase(),
-      );
+      // Throws the localized AmbiguousMentionError; ForumEntryView shows it (role=alert).
+      const addedMentions = forumEditMentions({
+        previousContent: entry.content,
+        content,
+        members: channel.members,
+        profiles,
+        editorPubkey: pubkey,
+      });
       await publish(
         forumEditTemplate({ channelId, target: entry.event, content, addedMentions }),
         "collab.forums.error.edit",
