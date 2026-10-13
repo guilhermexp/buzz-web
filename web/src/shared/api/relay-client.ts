@@ -67,9 +67,37 @@ export class BuzzRelayClient {
   private stateListeners = new Set<(state: RelayConnectionState) => void>();
   private subscriptions = new Map<string, Subscription>();
   private pendingPublishes = new Map<string, PendingPublish>();
+  private networkListening = false;
 
   constructor(relayUrl: string) {
     this.relayUrl = relayUrl;
+  }
+
+  // Browsers keep an established WebSocket open while the device is offline,
+  // so state would claim "connected" with no path to the Relay. Treat the
+  // network loss as a disconnect and reconnect as soon as it returns.
+  private readonly handleOffline = (): void => {
+    const socket = this.socket;
+    if (!socket || this.manuallyClosed || this.terminal) return;
+    socket.close();
+    this.handleClose(socket);
+  };
+
+  private readonly handleOnline = (): void => {
+    if (this.manuallyClosed || this.terminal || this.state === "connected") return;
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.reconnectDelay = 1_000;
+    if (this.connectPromise) this.openSocket();
+    else void this.connect().catch(() => undefined);
+  };
+
+  private listenForNetworkChanges(listen: boolean): void {
+    if (listen === this.networkListening || typeof window.addEventListener !== "function") return;
+    this.networkListening = listen;
+    const method = listen ? window.addEventListener : window.removeEventListener;
+    method.call(window, "offline", this.handleOffline);
+    method.call(window, "online", this.handleOnline);
   }
 
   get connectionState(): RelayConnectionState {
@@ -93,6 +121,7 @@ export class BuzzRelayClient {
     if (this.state === "connected" && this.socket?.readyState === WebSocket.OPEN) return;
     if (this.connectPromise) return this.connectPromise;
     this.manuallyClosed = false;
+    this.listenForNetworkChanges(true);
     this.setState(this.state === "idle" ? "connecting" : "reconnecting");
 
     this.connectPromise = new Promise<void>((resolve, reject) => {
@@ -111,6 +140,7 @@ export class BuzzRelayClient {
 
   disconnect(): void {
     this.manuallyClosed = true;
+    this.listenForNetworkChanges(false);
     this.terminal = false;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
