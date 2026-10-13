@@ -1,0 +1,1066 @@
+[
+  {
+    "yaml": "name: 123\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: true\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: ~\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\nextra: 1\ntrigger:\n  on: webhook\n  junk: 2\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    junk: 3\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: 7\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\nname: y\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: duplicate field `name`"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: '*/5 * * * *'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: 60\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: invalid type: integer `60`, expected a string"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '1h'\n  cron: null\nsteps:\n  - id: a\n    action: delay\n    duration: 5m\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: -1\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: integer `-1`, expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: '5'\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: string \"5\", expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: 'yes'\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: string \"yes\", expected a boolean at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nenabled: 'false'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: enabled: invalid type: string \"false\", expected a boolean at line 4 column 10"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nenabled: no\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: enabled: invalid type: string \"no\", expected a boolean at line 4 column 10"
+  },
+  {
+    "yaml": "name: x\ntrigger: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger: invalid type: string \"webhook\", expected internally tagged enum TriggerDef at line 2 column 10"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps: []\n",
+    "accepted": false,
+    "relayError": "invalid definition: at least one step is required"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: https://x\n    headers:\n      A: 1\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `1`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: request_approval\n    from: any\n    message: m\n    timeout: 10\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `10`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "",
+    "accepted": false,
+    "relayError": "invalid YAML: missing field `name`"
+  },
+  {
+    "yaml": "---\nname: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n---\nname: y\n",
+    "accepted": false,
+    "relayError": "invalid YAML: deserializing from YAML containing more than one document is not supported"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    channel: 12\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `12`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: reaction_added\n  emoji: 1\nsteps:\n  - id: a\n    action: add_reaction\n    emoji: 2\n",
+    "accepted": false,
+    "relayError": "invalid YAML: invalid type: integer `1`, expected a string"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1.5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `1.5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: &n x\ntrigger:\n  on: webhook\nsteps:\n  - id: *n\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: !!str x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: Webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger.on: unknown variant `Webhook`, expected one of `message_posted`, `reaction_added`, `diff_posted`, `schedule`, `webhook` at line 3 column 7"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  'on': webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    if: 5\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ndescription: 5\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 0x1F\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `31`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: .inf\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `inf`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 5.0\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: floating point `5.0`, expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: ~\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: ~\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: unit value, expected a boolean at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: message_posted\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: True\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: true\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: null\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: ''\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: name is required and must not be empty"
+  },
+  {
+    "yaml": "name:\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: name is required and must not be empty"
+  },
+  {
+    "yaml": "name: x\ndescription: ~\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ndescription:\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\nenabled: ~\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: enabled: invalid type: unit value, expected a boolean at line 2 column 10"
+  },
+  {
+    "yaml": "name: x\nenabled: TRUE\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\nenabled: tRue\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: enabled: invalid type: string \"tRue\", expected a boolean at line 2 column 10"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps: ~\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps: invalid type: unit value, expected a sequence at line 4 column 8"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n",
+    "accepted": false,
+    "relayError": "invalid definition: at least one step is required"
+  },
+  {
+    "yaml": "name: x\ntrigger: ~\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger: invalid type: unit value, expected internally tagged enum TriggerDef at line 2 column 10"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger: duplicate field `on` at line 3 column 3"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: message_posted\n  filter: a\n  filter: b\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: duplicate field `filter`"
+  },
+  {
+    "yaml": "name: x\nfoo: 1\nfoo: 2\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    id: b\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: duplicate field `id` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    text: ho\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: duplicate field `text` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    action: delay\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: duplicate field `action` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    channel: ~\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    channel: null\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    channel:\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: ''\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 'null'\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: Null\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: unit value, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: nULL\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1e3\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `1000.0`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1_000\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 0o17\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `15`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 017\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: +5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: .5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `0.5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 5.\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `5.0`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: -.inf\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `-inf`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: .NaN\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `NaN`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 12:30\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 0b101\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 99999999999999999999999\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].text: invalid type: integer `99999999999999999999999` as u128, expected any value at line 7 column 11"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: [a]\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: sequence, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: |\n      multi\n      line\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: !!str 5\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 0x10\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: +7\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 18446744073709551616\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: integer `18446744073709551616` as u128, expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: 1.5\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id '1.5' is invalid: must contain only alphanumeric characters and underscores"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: ~\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id '~' is invalid: must contain only alphanumeric characters and underscores"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: true\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    name: ~\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: u\n    headers: ~\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: u\n    headers:\n      1: v\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `1`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: u\n    headers: {}\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: u\n    method: ~\n    body: ~\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_dm\n    to: x\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: missing field `text` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: set_channel_topic\n    topic: t\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: 5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: missing field `from` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: missing field `action` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: missing field `id` at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - a\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: string \"a\", expected struct Step at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: schedule trigger requires either 'cron' or 'interval'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: ~\n  interval: ~\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: schedule trigger requires either 'cron' or 'interval'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: 1m\n  cron: '* * * * *'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: schedule trigger cannot specify both 'cron' and 'interval'; use one or the other"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: 59s\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: interval must be at least 60s (cron loop ticks every 60 seconds)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: ' 2 h '\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '1d'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '1d': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '-1h'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '-1h': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '3600'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '+90s'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: '999999999999999999h'\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '999999999999999999h': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: true\n",
+    "accepted": false,
+    "relayError": "invalid definition: step 'a': reply_in_thread requires a message-based trigger (message_posted, reaction_added, or diff_posted); schedule and webhook triggers have no message to reply to"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: diff_posted\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: true\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\n  extra: 5\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: ~\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger.on: unknown variant `~`, expected one of `message_posted`, `reaction_added`, `diff_posted`, `schedule`, `webhook` at line 3 column 7"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: message_posted\n  filter: 5\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: invalid type: integer `5`, expected a string"
+  },
+  {
+    "yaml": "- a\n- b\n",
+    "accepted": false,
+    "relayError": "invalid YAML: invalid type: sequence, expected struct WorkflowDef"
+  },
+  {
+    "yaml": "just a string\n",
+    "accepted": false,
+    "relayError": "invalid YAML: invalid type: string \"just a string\", expected struct WorkflowDef"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: delay\n    duration: 5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' is invalid: must contain only alphanumeric characters and underscores"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: 'é'\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id 'é' is invalid: must contain only alphanumeric characters and underscores"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: ' a'\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id ' a' is invalid: must contain only alphanumeric characters and underscores"
+  },
+  {
+    "yaml": "name: '  '\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: name is required and must not be empty"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: '   '\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: step id must not be empty"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: duplicate step id: a"
+  },
+  {
+    "yaml": "{name: x, trigger: {on: webhook}, steps: [{id: a, action: send_message, text: hi}]}",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 0\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 1_0\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: string \"1_0\", expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 0o10\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 010\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: string \"010\", expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 0b11\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 0X10\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0].timeout_secs: invalid type: string \"0X10\", expected u64 at line 8 column 19"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: Yes\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 0x\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: '-0'\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: -0\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `0`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1e\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1.2.3\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: infinity\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: inf\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: nan\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: NaN\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: +.inf\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `inf`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: 1E5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: floating point `100000.0`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: '1'\n    channel: 5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: integer `5`, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: request_approval\n    from: x\n    message: m\n    timeout: ~\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"*/5 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 9 * * MON-FRI\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 12 * * ?\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 12 ? * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 12 * * * 2030\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 12 * * * 1969\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '0 0 12 * * * 1969': 0 0 12 * * * 1969\n             ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"@daily\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"@hourly\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \" @weekly \"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"@daily x\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '@daily x': @daily x\n       ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"@every 5m\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '@every 5m': @every 5m\n^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"60 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '60 * * * *': 0 60 * * * * *\n  ^\nMinutes must be less than 59. ('60' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* 24 * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* 24 * * *': 0 * 24 * * * *\n    ^\nHours must be less than 23. ('24' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * 0 * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * 0 * *': 0 * * 0 * * *\n      ^\nDays of Month must be greater than or equal to 1. ('0' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * 32 * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * 32 * *': 0 * * 32 * * *\n      ^\nDays of Month must be less than 31. ('32' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * 13 *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * 13 *': 0 * * * 13 * *\n        ^\nMonths must be less than 12. ('13' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * 8\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * * 8': 0 * * * * 8 *\n          ^\nDays of Week must be less than 7. ('8' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * 0\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * * 0': 0 * * * * 0 *\n          ^\nDays of Week must be greater than or equal to 1. ('0' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * 7\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * JAN-DEC *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * jan *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * sun\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * SUNDAY\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * tues\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * DEC-JAN *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * DEC-JAN *': 0 * * * DEC-JAN * *\n        ^\nInvalid named range for Months: DEC-JAN"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"5-1 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '5-1 * * * *': 0 5-1 * * * * *\n  ^\nInvalid range for Minutes: 5-1"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"*/0 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '*/0 * * * *': 0 */0 * * * * *\n  ^\nrange step cannot be zero"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"*/60 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '*/60 * * * *': 0 */60 * * * * *\n  ^\nMinutes must be between 1 and 59. ('60' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"*/59 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"1,2,3 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"1, 2 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"1,* * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"1-5/2 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"MON/2 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression 'MON/2 * * * *': 0 MON/2 * * * * *\n  ^\nThe 'Minutes' field does not support using names. 'MON' specified."
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * MON-FRI/2\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * ? * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"? * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '? * * * *': 0 ? * * * * *\n  ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * * * * * *': * * * * * * * *\n              ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * *': * * * *\n       ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '': \n^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"   \"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '   ':    \n   ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 12 1 - 5 * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"a * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression 'a * * * *': 0 a * * * * *\n  ^\nThe 'Minutes' field does not support using names. 'a' specified."
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0/15 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"70/5 * * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '70/5 * * * * *': 70/5 * * * * * *\n^\nSeconds must be less than 59. ('70' specified.)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * ? * ?\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 0 1 1 ? 2100\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 0 1 1 ? 2101\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '0 0 0 1 1 ? 2101': 0 0 0 1 1 ? 2101\n            ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 0 1 1 ? 1970-2000/10\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"4294967296 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '4294967296 * * * *': 0 4294967296 * * * * *\n  ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"00 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"1-1 * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"L * * * *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression 'L * * * *': 0 L * * * * *\n  ^\nThe 'Minutes' field does not support using names. 'L' specified."
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * * 1#2\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * * 1#2': 0 * * * * 1#2 *\n           ^\n"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"*/5\\t*\\t*\\t*\\t*\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"0 0 0 1 JANUARY ?\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  cron: \"* * * FOO *\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid cron expression '* * * FOO *': 0 * * * FOO * *\n        ^\n'FOO' is not a valid month name."
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"1m\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"60\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"60s\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"59\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: interval must be at least 60s (cron loop ticks every 60 seconds)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"1h\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"2 m\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"+1m\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"1 h \"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"m\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval 'm': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"0h\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: interval must be at least 60s (cron loop ticks every 60 seconds)"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"18446744073709551615s\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"18446744073709551616\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '18446744073709551616': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"307445734561825861h\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '307445734561825861h': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"307445734561825860h\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '307445734561825860h': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"1.5h\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '1.5h': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: schedule\n  interval: \"1H\"\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid definition: invalid interval '1H': expected a duration like '30m', '1h', or '60s'"
+  },
+  {
+    "yaml": "name: approval\ntrigger:\n  on: webhook\nsteps:\n  - id: before\n    action: send_message\n    text: 'before'\n  - id: gate\n    action: request_approval\n    from: any\n    message: 'Release?'\n    timeout: 8s\n  - id: after\n    action: send_message\n    text: 'after'\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: 3\n    emoji: x\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: 7\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid value: integer `7`, expected variant index 0 <= i < 7 at line 5 column 5"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: true\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: boolean `true`, expected variant identifier at line 5 column 5"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: 4\nsteps:\n  - id: a\n    action: delay\n    duration: 1s\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger.on: unknown variant `4`, expected one of `message_posted`, `reaction_added`, `diff_posted`, `schedule`, `webhook` at line 3 column 7"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: delay\n    duration: 1s\n    unknown_field: [1, 2]\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - &s\n    id: a\n    action: delay\n    duration: 1s\n  - *s\n",
+    "accepted": false,
+    "relayError": "invalid definition: duplicate step id: a"
+  },
+  {
+    "yaml": "name: t\ntrigger: {on: reaction_added, emoji: '1'}\nsteps:\n  - {id: a, action: add_reaction, emoji: eyes}\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: https://example.com\n    headers:\n      X-A: '1'\n      X-B: b\n    method: PUT\n    body: '{}'\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: call_webhook\n    url: https://example.com\n    headers:\n      X-A: ~\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[0]: invalid type: unit value, expected a string at line 5 column 5"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    reply_in_thread: false\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\n  on: schedule\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger: duplicate field `on` at line 3 column 3"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  filter: x\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: trigger: missing field `on` at line 3 column 3"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n  - 5\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps[1]: invalid type: integer `5`, expected struct Step at line 8 column 5"
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps: {a: 1}\n",
+    "accepted": false,
+    "relayError": "invalid YAML: steps: invalid type: map, expected a sequence at line 4 column 8"
+  },
+  {
+    "yaml": "name: [a]\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": false,
+    "relayError": "invalid YAML: name: invalid type: sequence, expected a string at line 1 column 7"
+  },
+  {
+    "yaml": "name: t\nenabled: false\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: \"multi\\nline\"\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: t\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: hi\n    timeout_secs: 5\n    if: 'true'\n    name: Step A\n",
+    "accepted": true
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: [unclosed\n",
+    "accepted": false,
+    "relayError": "invalid YAML: did not find expected ',' or ']' at line 8 column 1, while parsing a flow sequence at line 7 column 11"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n\ton: webhook\nsteps: []\n",
+    "accepted": false,
+    "relayError": "invalid YAML: found character that cannot start any token at line 3 column 1, while scanning for the next token"
+  },
+  {
+    "yaml": "name: x\ntrigger:\n  on: webhook\nsteps:\n  - id: a\n    action: send_message\n    text: *missing\n",
+    "accepted": false,
+    "relayError": "invalid YAML: unknown anchor at line 7 column 11"
+  }
+]
