@@ -40,6 +40,7 @@ export class NativeHuddlePeer {
   readonly left: string[] = [];
   closed = false;
   private sendTimer: NodeJS.Timeout | undefined;
+  private streamDone: (() => void) | undefined;
 
   private constructor(
     private readonly socket: WebSocket,
@@ -174,6 +175,7 @@ export class NativeHuddlePeer {
     let timestamp = 0;
     let index = 0;
     const done = Promise.withResolvers<void>();
+    this.streamDone = done.resolve;
     this.sendTimer = setInterval(() => {
       const packet = packets[index];
       if (!packet || this.closed) {
@@ -207,7 +209,9 @@ export class NativeHuddlePeer {
   }
 
   close() {
+    this.closed = true;
     clearInterval(this.sendTimer);
+    this.streamDone?.();
     this.socket.close();
   }
 }

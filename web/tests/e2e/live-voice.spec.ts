@@ -93,6 +93,10 @@ function imetaFields(event: NostrEvent): Record<string, string>[] {
     });
 }
 
+function tagValue(event: NostrEvent, name: string): string | undefined {
+  return event.tags.find((tag) => tag[0] === name)?.[1];
+}
+
 async function blossomGet(url: string, secretKey: Uint8Array): Promise<Response> {
   const target = new URL(url);
   const auth = finalizeEvent(
@@ -194,8 +198,17 @@ test("voice notes record, cancel, upload and play real audio across clients", as
     const reader = await NodeRelayClient.connect(relayUrl, member.secretKey);
     let voiceEvents: NostrEvent[] = [];
     try {
+      // Scope to this run's channel: other runs by the same author may overlap the time window.
+      const metadata = (
+        await reader.waitFor([{ kinds: [39000], since: startedAt }], (events) =>
+          events.some((event) => tagValue(event, "name") === channelName),
+        )
+      ).filter((event) => tagValue(event, "name") === channelName);
+      expect(metadata).toHaveLength(1);
+      const channelId = tagValue(metadata[0] as NostrEvent, "d");
+      expect(channelId).toBeTruthy();
       voiceEvents = await reader.waitFor(
-        [{ kinds: [9], authors: [admin.pubkey], since: startedAt }],
+        [{ kinds: [9], authors: [admin.pubkey], "#h": [String(channelId)], since: startedAt }],
         (events) =>
           events.some((event) =>
             imetaFields(event).some((fields) => fields.filename?.startsWith("voice-note-")),
