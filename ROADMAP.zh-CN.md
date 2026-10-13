@@ -16,8 +16,7 @@ Web 端已经具备主要协作闭环：身份登录、频道、私聊、线程�
 
 ## P0：基础协作能力
 
-> **状态：** 已实现并部署到测试环境；正式发布前仍需使用真实 Relay 成员身份完成验收。
-> 隔离凭据的自动化执行方式和剩余 Desktop 跨客户端检查见
+> **状态：** 已实现；隔离凭据的自动化执行已在真实 Relay 上通过。剩余的 Desktop 跨客户端检查见
 > [P0 真实 Relay 验收](docs/p0-relay-acceptance.zh-CN.md)。
 
 ### 频道和成员管理
@@ -57,9 +56,10 @@ Relay 已读状态同步。
 
 ### 远程 Agent 运维
 
-> **状态：** Web 端现已支持由 Owner 加密、按频道隔离的 Agent 实时观察活动，并仅在内存中
-> 有界保留；参见 [Agent 实时观察活动](docs/agent-observer-activity.zh-CN.md)。持久历史和经过
-> 认证的控制面操作仍在计划中。
+> **状态：** 已通过 Agent Control `/v1` 实现（rootless Docker 中的隔离 Agent、带重放拒绝的
+> NIP-98、NIP-OA 授权、脱敏日志），并提供仅 Owner 可见的用量与记忆、Persona/Team 目录，以及
+> 本浏览器观察到的会话归档；参见 [Agent 实时观察活动](docs/agent-observer-activity.zh-CN.md)。
+> Relay 不保存持久会话历史，因此历史仅包含浏览器观察到的内容。
 
 **目标：** 通过有认证的控制面提供远程 Agent 配置、日志、Session、Memory、Persona、
 Team、响应策略和生命周期状态。
@@ -72,6 +72,9 @@ Team、响应策略和生命周期状态。
 - 浏览器代码永远不尝试启动用户本机进程。
 
 ### 完整 Projects 工作流
+
+> **状态：** 已实现：项目集合、发布/导入、多级浏览、Issue、PR、按修订版本评审，以及通过 Relay
+> 授权 Git 传输的浏览器内合并。剩余：浏览器内解决冲突、Issue 指派、删除项目/仓库。
 
 **目标：** 补齐多级目录浏览，并增加项目发布/导入、Issue、PR、Review、Merge 和受权限
 控制的写操作。
@@ -87,8 +90,8 @@ Team、响应策略和生命周期状态。
 
 ### Inbox 效率能力
 
-> **状态：** 精确定位来源消息和线程回复已经实现并部署；会话分组、提醒、Inbox 草稿、
-> 项目动态和稳定分页仍在计划中。
+> **状态：** 已实现：精确来源定位、分组、带到期投递和 Inbox 操作的提醒（kind 30300）以及审批条目。
+> 剩余：Inbox 草稿视图、项目动态和超大 Inbox 的稳定分页。
 
 **目标：** 增加会话分组、精确消息定位、提醒、稍后提醒、草稿和项目动态。
 
@@ -100,6 +103,9 @@ Team、响应策略和生命周期状态。
 
 ### 完整 Forum 体验
 
+> **状态：** 已实现，并在真实 Relay 上用两个身份验证；参见
+> [频道协作](docs/channel-collaboration.md)。
+
 **目标：** 实现 Topic 创建、元数据、排序、审核和 Forum 特有的未读逻辑。
 
 **验收标准：**
@@ -109,6 +115,8 @@ Team、响应策略和生命周期状态。
 - 审核操作按角色控制，并由真实 Relay 集成测试覆盖。
 
 ### Workflow 编辑和运行
+
+> **状态：** 已实现，依赖配套 Relay 的持久化审批关口（运行租约、检查点恢复、挂起、决策、过期）。
 
 **目标：** 增加 Workflow 列表、编辑、Trigger、Run/Step 详情、Schedule 和 Webhook；
 现有 Inbox 审批继续作为第一类操作入口。
@@ -121,11 +129,10 @@ Team、响应策略和生命周期状态。
 
 ## P3：平台能力
 
-后续研究方向包括多社区切换、Web Push、Pulse、基于 WebRTC 的 Huddle 和受控远程
-Terminal。这些能力需要浏览器原生安全设计，不能直接复制 Tauri API。
-
-进入实现前，每项能力都必须有威胁模型、协议兼容性决策，以及 Relay 未声明对应能力时的
-降级方案。
+> **状态：** 多社区切换、Web Push（由 Relay 执行，VAPID）、Pulse、Huddle（通过 Relay 音频
+> WebSocket 传输 Opus，而非 WebRTC）、语音消息以及受控的远程终端/文件/MCP 工作区均已实现；参见
+> [语音与 Huddle](docs/voice-huddles.md) 和 [`agent-control/README.md`](agent-control/README.md)。
+> 剩余：未激活社区的未读标记、实体设备音频验收、Chromium/Safari 推送验收。
 
 ## 持续工程工作
 

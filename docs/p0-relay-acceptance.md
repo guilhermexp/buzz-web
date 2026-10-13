@@ -44,8 +44,33 @@ The suite verifies:
 - Relay-backed favorite and mute state in an independent browser context.
 - A Relay/identity/channel-scoped draft after a reload.
 - Real-time channel unread appearance, clearing on open, and persisted read state after reload.
-- Message send, reaction, thread reply, edit, delete, and preservation of thread/reaction links.
+- Message send, reaction, thread reply, edit, delete, and preservation of thread links (a deleted
+  message keeps its replies but no longer offers reactions).
 - Archive cleanup through the same authorized UI operation used by normal clients.
+
+## Feature Live Suites
+
+The parity features have their own real-Relay suites. All use the same dedicated identities
+(`BUZZ_LIVE_ADMIN_NSEC`, `BUZZ_LIVE_MEMBER_NSEC`), `BUZZ_LIVE_BASE_URL` for the Web build under test
+and `BUZZ_LIVE_RELAY_URL` for direct protocol checks. Run each with
+`npx playwright test --config=<config>` from `web/`.
+
+| Config | Covers | Extra requirements |
+| --- | --- | --- |
+| `playwright.live-uishell.config.ts` | Community switching and isolation across two Relays | A second isolated Relay (`BUZZ_LIVE_RELAY_B_URL`, `BUZZ_LIVE_COMMUNITY_B_NAME`), `BUZZ_LIVE_SECOND_ADMIN_NSEC` with admin rights there, and the community preset in `config.json` |
+| `playwright.live-composer.config.ts` | Formatting, mentions, emoji, attachments, drafts | — |
+| `playwright.live-collab.config.ts` | Canvas, forums, reminders, Pulse, exports | — |
+| `playwright.live-agents.config.ts` | Managed agent lifecycle, usage, memory, catalogs | Agent Control (`BUZZ_LIVE_AGENT_CONTROL_URL`) with an `agents` grant and a model endpoint |
+| `playwright.live-projects.config.ts` | Publish, issues, PRs, review, merge, protected refs | `git` on the test host |
+| `playwright.live-workflows.config.ts` | Workflow authoring, runs and approvals | Companion Relay with approval gates |
+| `playwright.live-voice.config.ts` | Huddle audio, mute, leave, revocation; voice notes | Companion Relay, `ffmpeg` and `libopus` for the native-wire peer |
+| `playwright.live-voice-controls.config.ts` | Denied permission, deafen, device loss, reconnect, Firefox | Companion Relay |
+| `playwright.live-push.config.ts` | Web Push with all app tabs closed, deep links, mutes | Relay with VAPID configured, Firefox, Internet access to the push service |
+| `playwright.live-remote.config.ts` | Remote terminal, files, MCP, revocation | Agent Control with `terminal`/`files`/`mcp` grants and a writable grants file (`BUZZ_LIVE_REMOTE_GRANTS_FILE`) |
+
+Feature suites write screenshots and evidence logs to the Playwright output directory or the
+ignored `.tmp/` tree (each spec names its override variable at the top). Review them before sharing:
+they show test content and public keys, never private keys.
 
 ## Manual Cross-Client Gate
 

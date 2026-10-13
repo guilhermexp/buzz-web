@@ -15,24 +15,30 @@ Buzz Web 是一个连接 [Buzz](https://github.com/block/buzz) Relay 的独立�
 ## 我们的 Fork
 
 本仓库是 [guilhermexp/buzz-web](https://github.com/guilhermexp/buzz-web)，Fork 自
-[hardy4yooz/buzz-web](https://github.com/hardy4yooz/buzz-web)。我们正在将浏览器客户端与
-Buzz Desktop 进行比较，以对齐界面并识别有用的浏览器原生工具。
-详见[固定版本的比较与建议优先级](docs/buzz-parity-analysis.md)。
-该分析不表示已实现新功能，也不表示与桌面端完全一致。
+[hardy4yooz/buzz-web](https://github.com/hardy4yooz/buzz-web)，在保留浏览器和移动端行为的前提下与
+Buzz Desktop 对齐。[比较分析](docs/buzz-parity-analysis.md)记录了基线；
+[对齐变更](openspec/changes/complete-web-desktop-parity/tasks.md)记录已实现的条目及各自的验证方式。
 
-Inbox 已支持签名并发布批准／拒绝事件。但在本次比较的 Buzz 版本中，Workflow 引擎仍不支持
-需要审批才能继续执行的流程。依赖此端到端流程前，请先阅读分析中的限制说明。
+Workflow 审批、Huddle、语音消息、Web Push 以及 WAV 语音消息上传需要配套的 Relay 版本
+[guilhermexp/buzz](https://github.com/guilhermexp/buzz)（`feat/full-web-parity`）；
+较旧的 Relay 会隐藏或拒绝这些功能。
 
 ## 当前能力
 
 | 功能域 | 当前可用 | 主要限制 |
 | --- | --- | --- |
 | 身份 | NIP-07、加密多身份保险库、创建身份、编辑 Profile、`ncryptsec` 备份与恢复 | 本地私钥解锁后仍存在于页面内存，共享设备优先使用 NIP-07 |
-| 消息 | 频道、私聊、线程、Reaction、@ 提及、搜索、上传、编辑/删除、隔离草稿、输入状态、在线状态和 NIP-RS 已读状态 | 写操作受 Relay 权限控制；加密同步已读状态要求签名器支持 NIP-44 |
-| Inbox | 提及、私聊、线程回复、Workflow 审批、筛选和 Relay 同步的未读状态 | NIP-RS 前沿只能递增，因此手动标记未读仍保存在当前设备 |
-| 成员 | 频道发现、收藏、静音/归档、成员目录、角色修改、移除成员、Relay 成员接入和限时邀请 | 成员及管理操作最终受 Relay 权限控制 |
-| Agents | 发现远程 Agent、查看状态、管理频道权限、发起私聊、按配置启动服务 | 本机 Agent 创建和完整运行时配置仍属于桌面端能力 |
-| Projects | 浏览 NIP-34 仓库公告、Refs、目录、文件、提交和 Clone 地址 | 暂不支持发布、Issue、PR、Review 和 Merge |
+| 消息 | 频道、私聊、线程、Reaction、@ 提及、搜索、上传、编辑/删除、隔离草稿、输入状态、在线状态和 NIP-RS 已读状态。富文本输入框发送与桌面端兼容的 Markdown（格式工具栏和快捷键），将选中的提及绑定到确切公钥，可插入 Unicode 表情和社区自定义表情（NIP-30）、通过 Relay 搜索 GIF，并支持粘贴或拖放文件及语音消息 | 写操作受 Relay 权限控制；加密同步已读状态要求签名器支持 NIP-44；仅当 Relay 运营者配置了 GIF 服务时才能搜索 GIF |
+| Inbox | 提及、私聊、线程回复、Workflow 审批、到期提醒、可键盘导航的分组、筛选和 Relay 同步的未读状态 | NIP-RS 前沿只能递增，因此手动标记未读仍保存在当前设备 |
+| 成员 | 频道发现、带右键菜单和排序的侧边栏分组、收藏、静音/归档、成员目录、角色修改、移除成员、Relay 成员接入和限时邀请 | 成员及管理操作最终受 Relay 权限控制；自定义侧边栏顺序仅保存在当前浏览器 |
+| 社区 | 可保存多个社区（Relay + 身份）并切换；每个工作区拥有独立的连接、缓存和草稿 | 未激活的社区不显示未读标记 |
+| 协作 | 频道 Canvas（防冲突保存、历史和恢复）；论坛频道；私密提醒；Pulse 动态、回复、点赞和关注；按范围导出内容以及 Agent/团队快照卡片 | Canvas 编辑权限与桌面端一致（Owner/Admin）；超大频道导出有上限并标记为截断 |
+| 语音 | 通过 Relay 传输 Opus 音频的 Huddle，参与者、静音、关闭收听、设备选择和表情反应；在频道和线程中录制语音消息（WAV） | 需要麦克风权限和安全上下文；自动化验收使用合成音频 |
+| 通知 | 通过 Relay 的 Web Push（应用关闭时也能收到）、精确深链接、按频道订阅和静音处理 | 需要 Relay 配置 VAPID；已使用 Firefox 与 Mozilla autopush 验证 |
+| Workflows | Workflow 列表、与 Relay 校验一致的 YAML 编辑器、手动与 Webhook 触发、运行/步骤详情，以及指定审批人的批准/拒绝 | Webhook 密钥只显示一次且不会保存 |
+| Agents | 发现 Agent 并显示 NIP-OA Owner 标识；配合 Agent Control 创建、配置、启动/停止/重启和移除容器化 Agent；频道权限与响应策略；仅 Owner 可见的用量（44200）与记忆（30174，只读）；运行日志；本浏览器观察到的会话记录；可显式共享的人设/团队目录 | 会话记录仅包含本浏览器实时观察到的内容；创建 Agent 需要导入的密钥（NIP-07 无法签署 NIP-OA）；浏览器不运行桌面本地 harness |
+| Projects | 项目集合、NIP-34 仓库（发布/导入、嵌套浏览、Refs、提交）、带计数的 Issue 和 PR、按修订版本的 Diff、行内评审与批准，以及通过 Relay 推送的浏览器内合并 | 合并冲突需在本地解决；暂不支持 Issue 指派及删除项目/仓库 |
+| 远程工作区 | 获得 Agent Control 授权后：在隔离的个人工作区内使用终端、文件浏览/编辑（上传/下载）和 MCP 工具 | 需要单独部署运行在 rootless Docker 上的 Agent Control |
 
 尚不可用的操作会直接隐藏，不展示无效占位按钮。后续计划及验收标准见
 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
@@ -43,12 +49,13 @@ Inbox 已支持签名并发布批准／拒绝事件。但在本次比较的 Buzz
 浏览器
   |-- WSS：NIP-42 身份认证与事件 ----------> Buzz Relay
   |-- HTTPS：NIP-98 查询、邀请、媒体、Git -> Buzz Relay
-  `-- HTTPS：签名的启动请求（可选） -------> Agent Control -> systemd
+  `-- HTTPS：NIP-98 Agent/工作区控制（可选）-> Agent Control -> rootless 容器
 ```
 
 浏览器只是 Relay 客户端。Prompt、消息、仓库事件和 Agent 回复会按照所连接 Relay 的
-策略存储。可选的 `agent-control` 只负责启动白名单内的 systemd unit，不接收 `nsec`、
-模型凭据或 Agent 环境文件。
+策略存储。可选的 `agent-control` 在 rootless 容器中运行经授权的 Agent 与工作区。Agent 密钥
+由服务端生成并仅保存在服务端，永不返回；浏览器只发送签名请求和 Owner 的 NIP-OA 授权，
+从不发送 Owner 的 `nsec`。模型凭据保留在服务配置中。
 
 ## 快速开始
 
@@ -77,8 +84,8 @@ npm run dev
 
 `config.json` 在运行时获取，始终属于公开资源。不要在其中写入 `nsec`、Relay API token、
 owner 私钥、模型凭据或私有服务地址。Agent 名称通常来自 Relay 成员关系和 kind `0`
-Profile 事件；`agents` 只是在事件尚未到达时提供展示兜底，也可在配置 Agent Control 后
-标记哪些已知 Agent 能被启动。
+Profile 事件；`agents` 只是在事件尚未到达时提供展示兜底。只有配置了 `agentControlUrl`
+且运营方为当前身份授予 `agents` 权限时，才会显示 Agent 生命周期控制。
 
 实验功能入口由 Relay 部署公开的 `features` 配置控制。即使配置暂时落后，Relay 中已经
 存在 NIP-34 仓库公告或 Forum 频道时，对应内容仍可被发现。Buzz Desktop 的实验开关只
@@ -122,6 +129,11 @@ npm test
 
 Playwright 除桌面和移动交互外，还会显式验证英文及简体中文浏览器 locale。
 
+真实 Relay 验收套件与演示套件并列，配置为 `web/playwright.live*.config.ts`（P0 使用 `live`，另有
+`live-uishell`、`live-composer`、`live-collab`、`live-agents`、`live-projects`、`live-workflows`、
+`live-voice`、`live-voice-controls`、`live-push` 和 `live-remote`）。它们需要专用测试身份和配套
+Relay；各套件读取的环境变量见 [P0 真实 Relay 验收](docs/p0-relay-acceptance.zh-CN.md)。
+
 ## 生产部署
 
 [`deploy/`](deploy/README.md) 中的通用 Compose 栈会构建只读容器，在 `/app/` 下提供
@@ -144,7 +156,7 @@ docker compose -f deploy/compose.yml up -d
 
 ```text
 web/             React/Vite 浏览器客户端
-agent-control/   可选的 NIP-98 保护 Agent 启动服务
+agent-control/   可选的 NIP-98 保护 Agent 与工作区运行服务
 deploy/          生产容器和反向代理示例
 docs/            运维文档
 ```

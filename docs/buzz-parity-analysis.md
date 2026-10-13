@@ -1,7 +1,9 @@
 # Buzz desktop parity analysis
 
-Date: 2026-10-13. Status: comparison and proposed priorities, not feature implementation or a
-claim of desktop parity.
+Date: 2026-10-13. Status: baseline comparison and proposed priorities. Implementation status and
+verification evidence for each item now live in the
+[complete-web-desktop-parity](../openspec/changes/complete-web-desktop-parity/tasks.md) change; the
+rows below describe the baseline unless marked otherwise.
 
 ## Baselines and scope
 
@@ -76,7 +78,7 @@ component with explicit authorized operations, not a generic CLI/shell proxy.
 | Rich text, emoji and clipboard attachments | Mentions, Markdown rendering and uploads exist; the composer itself is still a textarea. | Browser editor/clipboard APIs plus the existing upload/event path. Voice/GIF require their own capability/permission checks. | P1 |
 | Agent activity | Live observer UI exists; durable observer history and a full control plane remain planned. | Kind `24200` is ephemeral; an open tab's buffer is not historical storage. Keep it separate from durable per-turn metrics. | P1/P2 |
 | Agent usage/cost and memory inspection | No owner-scoped metrics or memory surface. | Metrics kind `44200` and engrams kind `30174` are existing Relay contracts; reading/decryption can stay with an authorized owner signer. This does not require a general remote shell or give access to runtime secrets. | P2, read-only first |
-| Agent start/stop/restart and configuration | Optional start/restart of an allowlisted systemd service; no general stop/configuration endpoint. | Extend typed remote control operations only where a runtime is available. The browser must not receive provider credentials or agent private keys. | P2 |
+| Agent start/stop/restart and configuration | Agent Control `/v1/agents`: server-side keys, NIP-OA authorization, contained start/stop/restart/configure/delete and redacted logs (superseded the original systemd `POST /start`). | Keep the browser free of provider credentials and agent private keys. | Done (complete-web-desktop-parity) |
 | Personas and persisted teams | Agent discovery and channel-derived team display, not desktop-equivalent editing/import/versioning. | Separate Relay catalog metadata from filesystem/runtime installation and secret custody. | P2 |
 | Workflow list/editor/run traces | Inbox already publishes approval/denial events; full authoring and run views are missing. | Definition/trigger/run inspection can reuse existing contracts. Approval-gated execution is currently blocked in the original workflow engine; a web button cannot fix that backend gap. | P2; gated execution blocked upstream |
 | Reminders / productivity actions | Inbox exists; reminders and richer grouping remain planned. | Persist through the appropriate Relay-backed contract if cross-device behavior is promised. Do not silently substitute device-local state. | P2 |
@@ -87,13 +89,12 @@ component with explicit authorized operations, not a generic CLI/shell proxy.
 | Terminal / MCP / local files | Not available as a browser workspace tool. | `buzz-acp`, `buzz-dev-mcp`, CLI and runtime processes belong on an authorized server/worker. A remote terminal requires its own security and lifecycle contract. | P3, not a direct port |
 | Web Push / background notifications / Pulse | Planned, not equivalent to native notifications or the full desktop Pulse surface. | Browser/platform capabilities and supported server contracts; do not claim notifications while the page is closed from in-tab updates. | P3 |
 
-### Existing remote-start boundary
+### Remote runtime boundary
 
-`agent-control/server.mjs:61-105` accepts only an authenticated `POST /start`, resolves a configured
-agent public key to an allowlisted systemd unit and starts/restarts that unit. Other action routes
-return 404. It checks service activity after the operation. This is useful reuse, but it is not
-agent creation, a terminal, stop/configuration support, or a complete runtime manager. See
-[the current service documentation](../agent-control/README.md).
+The original service accepted only `POST /start` for allowlisted systemd units. It was replaced by
+the `/v1` contract: owner-granted agents and workspaces in rootless Docker containers (terminal,
+confined files, MCP), bound to owner + community, with NIP-98 replay protection and live
+revocation. See [the current service documentation](../agent-control/README.md).
 
 The current web `AgentsView.tsx:314-320,489-515` constructs displayed teams from channel membership.
 Its defaults popover (`:342-355`) displays policy/count information; it is not the desktop defaults
