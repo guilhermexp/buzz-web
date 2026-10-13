@@ -59,6 +59,7 @@ and `BUZZ_LIVE_RELAY_URL` for direct protocol checks. Run each with
 | --- | --- | --- |
 | `playwright.live-uishell.config.ts` | Community switching and isolation across two Relays | A second isolated Relay (`BUZZ_LIVE_RELAY_B_URL`, `BUZZ_LIVE_COMMUNITY_B_NAME`), `BUZZ_LIVE_SECOND_ADMIN_NSEC` with admin rights there, and the community preset in `config.json` |
 | `playwright.live-composer.config.ts` | Formatting, mentions, emoji, attachments, drafts | — |
+| `playwright.live-gif.config.ts` | Relay-proxied KLIPY GIF search: provider-failure mapping (en/zh-CN, nothing sent) and the search → share → send → render success path | Relay advertising `buzz-gif`; see [GIF search prerequisite](#gif-search-prerequisite) |
 | `playwright.live-collab.config.ts` | Canvas, forums, reminders, Pulse, exports | — |
 | `playwright.live-agents.config.ts` | Managed agent lifecycle, usage, memory, catalogs | Agent Control (`BUZZ_LIVE_AGENT_CONTROL_URL`) with an `agents` grant and a model endpoint |
 | `playwright.live-projects.config.ts` | Publish, issues, PRs, review, merge, protected refs | `git` on the test host |
@@ -71,6 +72,73 @@ and `BUZZ_LIVE_RELAY_URL` for direct protocol checks. Run each with
 Feature suites write screenshots and evidence logs to the Playwright output directory or the
 ignored `.tmp/` tree (each spec names its override variable at the top). Review them before sharing:
 they show test content and public keys, never private keys.
+
+### GIF search prerequisite
+
+GIF search is proxied by the Relay (Buzz Relay `docs/gif-search.md`). The Web picker searches only
+when the Relay's NIP-11 advertises `buzz-gif`, which it does only when the Relay process has
+`BUZZ_KLIPY_API_KEY`. The success path needs real provider results, so it stays unproven until an
+operator supplies a key; it is never waived or mocked.
+
+Prerequisites:
+
+1. An operator-approved KLIPY API test key, issued to the Relay operator through KLIPY's developer
+   program. Do not borrow a production key or a tester's personal account.
+2. Outbound HTTPS from the Relay host to `api.klipy.com` (port 443). Browsers load the selected
+   media directly from KLIPY's CDN (`*.klipy.com`), which the Web CSP allows through `img-src https:`.
+3. The key exists only in the Relay's environment. It rides in the upstream request path
+   (`https://api.klipy.com/api/v1/<key>/gifs/...`), so never put it in a URL you share, shell
+   history, tickets, logs, Web `config.json`, or browser storage. The Relay disables redirects and
+   never returns provider bodies to clients.
+
+Secret-safe injection (the key is read without echo and never appears in history or process lists):
+
+```bash
+umask 077
+read -rs KLIPY_KEY && printf 'BUZZ_KLIPY_API_KEY=%s\n' "$KLIPY_KEY" > <relay-secrets-dir>/klipy.env
+unset KLIPY_KEY
+chmod 600 <relay-secrets-dir>/klipy.env
+```
+
+Load that file into the Relay process environment (systemd `EnvironmentFile=`, Compose
+`env_file:`, or the launcher's `source`) and restart the Relay process, for example
+`systemctl restart <relay-unit>`; the variable is read only at startup. The companion task launcher
+(`.tmp/runtime/relay.sh` in the Relay worktree) loads `.tmp/runtime/secrets/klipy.env` for relays A
+and B only; stop and start those relay processes after creating the file. Confirm the capability
+without revealing the key:
+
+```bash
+curl -s -H 'Accept: application/nostr+json' https://buzz.example.com/info \
+  | jq '{buzz_gif: (.supported_extensions | index("buzz-gif") != null), gif}'
+```
+
+Expect `"buzz_gif": true` and `{"provider": "klipy", "search": "/gifs/search", "share": "/gifs/share"}`.
+Then run the success path:
+
+```bash
+cd web
+BUZZ_LIVE_BASE_URL=https://buzz.example.com/app/ \
+BUZZ_LIVE_RELAY_URL=wss://buzz.example.com \
+BUZZ_LIVE_ADMIN_NSEC="$TEST_ADMIN_NSEC" \
+BUZZ_LIVE_MEMBER_NSEC="$TEST_MEMBER_NSEC" \
+BUZZ_LIVE_GIF_EXPECT_RESULTS=1 \
+npx playwright test --config=playwright.live-gif.config.ts --grep "selects a KLIPY"
+```
+
+It searches, selects a result (the Relay must answer the share report with `204`), sends it, and
+asserts that the message body carries a `*.klipy.com` URL with no `imeta` tag or upload and that the
+second browser renders it. Unless NIP-11 advertises `buzz-gif` and
+`BUZZ_LIVE_GIF_EXPECT_RESULTS=1` is set, the test is skipped with a reason that starts
+`operator prerequisite missing: an operator-approved KLIPY test key (BUZZ_KLIPY_API_KEY)`. A
+skip is not a pass.
+
+The provider-failure test runs against a Relay that is deliberately configured with an obviously
+invalid placeholder value, such as `BUZZ_KLIPY_API_KEY=invalid-test-key-not-a-credential`, with
+`BUZZ_LIVE_GIF_EXPECT_ERROR_STATUS=502`. In the 2026-10-13 run, KLIPY answered that placeholder
+with `404`. The Relay mapped this to `502 GIF provider rejected the search request`, and Web showed
+the localized provider-failure message without sending or uploading anything. To remove the key,
+delete `klipy.env` and restart the Relay. NIP-11 then stops advertising `buzz-gif`, and the picker
+explains that GIF search is not available.
 
 ## Manual Cross-Client Gate
 

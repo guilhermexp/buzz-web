@@ -57,6 +57,18 @@ export const composerMessages = defineMessages({
     en: "Could not read this Relay's capabilities.",
     "zh-CN": "无法读取此 Relay 的功能信息。",
   },
+  "composer.gifInvalidRequest": {
+    en: "The Relay rejected this GIF request as invalid.",
+    "zh-CN": "Relay 认为此 GIF 请求无效并已拒绝。",
+  },
+  "composer.gifAuthFailed": {
+    en: "The Relay could not verify your signed GIF request. Sign in again and retry.",
+    "zh-CN": "Relay 无法验证你签名的 GIF 请求，请重新登录后重试。",
+  },
+  "composer.gifForbidden": {
+    en: "You are not allowed to use GIF search on this Relay.",
+    "zh-CN": "你无权使用此 Relay 的 GIF 搜索。",
+  },
   "composer.gifNotConfigured": {
     en: "GIF search is not configured on this Relay.",
     "zh-CN": "此 Relay 未配置 GIF 搜索。",
@@ -69,10 +81,23 @@ export const composerMessages = defineMessages({
     en: "Too many GIF searches. Try again shortly.",
     "zh-CN": "GIF 搜索过于频繁，请稍后再试。",
   },
-  "composer.gifRequestFailed": {
-    en: "GIF request failed ({status})",
-    "zh-CN": "GIF 请求失败（{status}）",
+  "composer.gifProviderFailed": {
+    en: "The GIF provider is unavailable or rejected the request. Try again later.",
+    "zh-CN": "GIF 服务不可用或拒绝了该请求，请稍后再试。",
   },
+  "composer.gifTemporarilyUnavailable": {
+    en: "GIF search is temporarily unavailable on this Relay. Try again later.",
+    "zh-CN": "此 Relay 的 GIF 搜索暂时不可用，请稍后再试。",
+  },
+  "composer.gifTimeout": {
+    en: "The GIF request timed out. Try again.",
+    "zh-CN": "GIF 请求超时，请重试。",
+  },
+  "composer.gifNetworkFailed": {
+    en: "Could not reach the Relay for GIF search.",
+    "zh-CN": "无法连接 Relay 进行 GIF 搜索。",
+  },
+  "composer.gifRequestFailed": { en: "GIF request failed.", "zh-CN": "GIF 请求失败。" },
   "composer.gifProvider": { en: "Results from KLIPY", "zh-CN": "结果来自 KLIPY" },
   "composer.gifAdd": { en: "Add GIF: {title}", "zh-CN": "添加 GIF：{title}" },
   "composer.mentionAmbiguous": {

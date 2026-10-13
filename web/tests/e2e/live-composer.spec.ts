@@ -15,6 +15,7 @@ import {
   reloadAndUnlock,
 } from "./support/live-session";
 import { NodeRelayClient } from "./support/node-relay";
+import { relayAdvertisesGif } from "./support-gif/relay-gif";
 
 const admin = identityFromEnvironment("BUZZ_LIVE_ADMIN_NSEC");
 const member = identityFromEnvironment("BUZZ_LIVE_MEMBER_NSEC");
@@ -215,7 +216,9 @@ test("rich composer publishes formatting, mentions, media and custom emoji", asy
     expect(uploads).toHaveLength(0);
     await adminPage.getByRole("button", { name: "Dismiss" }).click();
 
-    // Unicode emoji insert; GIF search is honestly unavailable when the Relay has no provider.
+    // Unicode emoji insert; the GIF tab follows the Relay's NIP-11 capability: honestly
+    // unavailable without a provider, the search UI when buzz-gif is advertised
+    // (live-gif.spec.ts covers search, share and send).
     await adminPage.getByRole("button", { name: "Insert emoji" }).click();
     const picker = adminPage.getByRole("dialog", { name: "Emoji and GIFs" });
     await picker.getByRole("tab", { name: "Emoji", exact: true }).click();
@@ -224,7 +227,11 @@ test("rich composer publishes formatting, mentions, media and custom emoji", asy
     await expect(composer).toHaveText("🚀");
     await adminPage.getByRole("button", { name: "Insert emoji" }).click();
     await picker.getByRole("tab", { name: "GIFs" }).click();
-    await expect(picker.getByText(/GIF search is not available on this Relay/)).toBeVisible();
+    if (await relayAdvertisesGif(relayUrl)) {
+      await expect(picker.getByLabel("Search GIFs")).toBeVisible();
+    } else {
+      await expect(picker.getByText(/GIF search is not available on this Relay/)).toBeVisible();
+    }
     await adminPage.keyboard.press("Escape");
     await composer.click();
     await adminPage.keyboard.press("ControlOrMeta+a");

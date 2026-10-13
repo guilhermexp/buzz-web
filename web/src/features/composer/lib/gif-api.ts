@@ -1,6 +1,6 @@
 import type { AttachmentDescriptor } from "@/features/chat/lib/chat-types";
 import { relayHttpOrigin } from "@/shared/config/runtime-config";
-import { t } from "@/shared/i18n";
+import { getLocale, type MessageKey, t } from "@/shared/i18n";
 import { makeNip98AuthHeader } from "@/shared/lib/nip98";
 
 /**
@@ -132,15 +132,65 @@ export async function fetchRelayGifCapability(
   return relayGifCapability(await response.json());
 }
 
-/** Map a Relay error envelope to a localized message plus the bounded server detail. */
-export function gifErrorMessage(status: number, detail: string | undefined): string {
-  if (status === 404 && detail === "GIF search is not configured") {
-    return t("composer.gifNotConfigured");
+/** 403 is resolved by detail in `statusMessage`; unlisted statuses use the generic copy. */
+const STATUS_MESSAGES: Partial<Record<number, MessageKey>> = {
+  400: "composer.gifInvalidRequest",
+  401: "composer.gifAuthFailed",
+  404: "composer.gifNotConfigured",
+  408: "composer.gifTimeout",
+  429: "composer.gifRateLimited",
+  502: "composer.gifProviderFailed",
+  503: "composer.gifTemporarilyUnavailable",
+  504: "composer.gifTimeout",
+};
+
+/** Machine codes that the localized message already explains completely. */
+const EXPLAINED_DETAILS: Record<string, true> = {
+  relay_membership_required: true,
+  "GIF search is not configured": true,
+};
+
+function statusMessage(status: number, detail: string | undefined): string {
+  if (status === 403) {
+    if (detail === "relay_membership_required") return t("composer.gifMembershipRequired");
+    if (detail === "evidence rejected") return t("composer.gifAuthFailed");
+    return t("composer.gifForbidden");
   }
-  if (detail === "relay_membership_required") return t("composer.gifMembershipRequired");
-  if (status === 429) return t("composer.gifRateLimited");
-  const base = t("composer.gifRequestFailed", { status });
-  return detail ? `${base}: ${detail.slice(0, 200)}` : base;
+  return t(STATUS_MESSAGES[status] ?? "composer.gifRequestFailed");
+}
+
+/**
+ * Map a Relay status plus its (untrusted) error detail to a localized message. The detail is
+ * appended verbatim but bounded, so operators can still see the Relay's stable reason.
+ */
+export function gifErrorMessage(status: number, detail: string | undefined): string {
+  const message = statusMessage(status, detail);
+  const bounded = detail?.replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!bounded || EXPLAINED_DETAILS[bounded] === true) return `${message} (${status})`;
+  return `${message} (${status}: ${bounded})`;
+}
+
+/** Relay errors are JSON `{ error }` envelopes, but NIP-FI denials are plain-text bodies. */
+async function relayErrorDetail(response: Response): Promise<string | undefined> {
+  const text = (await response.text().catch(() => "")).slice(0, 4096).trim();
+  if (!text) return undefined;
+  try {
+    const envelope: unknown = JSON.parse(text);
+    const error =
+      envelope && typeof envelope === "object" && "error" in envelope ? envelope.error : undefined;
+    return typeof error === "string" ? error : undefined;
+  } catch {
+    return text.startsWith("<") ? undefined : text;
+  }
+}
+
+/** The Relay's own upstream timeout is 10s; allow for signing and one slow round trip on top. */
+const GIF_REQUEST_TIMEOUT_MS = 20_000;
+
+/** KLIPY localizes by the browser's full language tag, matching desktop. */
+function providerLocale(): string {
+  const language = typeof navigator === "undefined" ? "" : navigator.language;
+  return (language || getLocale()).slice(0, 32);
 }
 
 function customerId(relayUrl: string, pubkey: string): string {
@@ -165,38 +215,56 @@ async function relayPost(
 ): Promise<unknown> {
   const url = `${relayHttpOrigin(relayUrl)}${path}`;
   const body = JSON.stringify(payload);
-  const response = await fetch(url, {
-    method: "POST",
-    body,
-    signal,
-    headers: {
-      Authorization: await makeNip98AuthHeader(url, "POST", { body }),
-      "Content-Type": "application/json",
-    },
-  });
+  const timeout = AbortSignal.timeout(GIF_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      body,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      headers: {
+        Authorization: await makeNip98AuthHeader(url, "POST", { body }),
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    if (timeout.aborted) throw new GifRequestError(t("composer.gifTimeout"), 408);
+    throw new GifRequestError(t("composer.gifNetworkFailed"), 0);
+  }
   if (!response.ok) {
-    const envelope = (await response.json().catch(() => ({}))) as { error?: unknown };
-    const detail = typeof envelope.error === "string" ? envelope.error : undefined;
+    const detail = await relayErrorDetail(response);
     throw new GifRequestError(gifErrorMessage(response.status, detail), response.status);
   }
   return response.status === 204 ? null : response.json();
 }
 
-/** Empty query browses trending GIFs. */
+/** Empty query browses trending GIFs; any other query uses provider search. */
 export async function searchRelayGifs(
   relayUrl: string,
   pubkey: string,
   capability: RelayGifCapability,
   query: string,
-  locale: string,
   signal?: AbortSignal,
 ): Promise<RelayGif[]> {
   const payload = await relayPost(
     relayUrl,
     capability.searchPath,
-    { query: query.trim().slice(0, 200), customer_id: customerId(relayUrl, pubkey), locale },
+    {
+      query: query.trim().slice(0, 200),
+      customer_id: customerId(relayUrl, pubkey),
+      locale: providerLocale(),
+    },
     signal,
   );
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("result" in payload) ||
+    payload.result !== true
+  ) {
+    throw new GifRequestError(gifErrorMessage(502, undefined), 502);
+  }
   return normalizeRelayGifs(payload);
 }
 

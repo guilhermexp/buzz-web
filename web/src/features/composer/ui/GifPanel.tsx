@@ -7,7 +7,7 @@ import {
   type RelayGifCapability,
   searchRelayGifs,
 } from "@/features/composer/lib/gif-api";
-import { getLocale, t } from "@/shared/i18n";
+import { t } from "@/shared/i18n";
 
 function useDebounced(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value);
@@ -44,9 +44,8 @@ function GifResults({
   const [query, setQuery] = useState("");
   const debounced = useDebounced(query.trim(), 300);
   const results = useQuery({
-    queryKey: ["composer", "gif-search", relayUrl, pubkey, debounced],
-    queryFn: ({ signal }) =>
-      searchRelayGifs(relayUrl, pubkey, capability, debounced, getLocale(), signal),
+    queryKey: ["composer", "gif-search", relayUrl, pubkey, capability.searchPath, debounced],
+    queryFn: ({ signal }) => searchRelayGifs(relayUrl, pubkey, capability, debounced, signal),
     staleTime: 60_000,
     retry: false,
   });
