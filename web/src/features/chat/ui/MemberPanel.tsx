@@ -29,6 +29,8 @@ export function MemberDialog({
   onOpenDm,
   onSetMember,
   onRemoveMember,
+  initialAddOpen = false,
+  addRoles,
 }: {
   channel: BuzzChannel;
   profiles: Record<string, UserProfile>;
@@ -41,8 +43,15 @@ export function MemberDialog({
   onOpenDm: (pubkey: string) => Promise<void>;
   onSetMember: (pubkey: string, role: "admin" | "member" | "guest") => Promise<void>;
   onRemoveMember: (pubkey: string) => Promise<void>;
+  /** Open with the add-member form expanded (channel intro "Add people"). */
+  initialAddOpen?: boolean;
+  /** Roles this identity may grant when adding (relay put-user rule); empty hides the form. */
+  addRoles: readonly (typeof MANAGEABLE_ROLES)[number][];
 }) {
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(initialAddOpen);
+  // The role a pending change requested: shown (disabled, with a spinner)
+  // only while the Relay write is in flight, then the roster is the truth.
+  const [requestedRoles, setRequestedRoles] = useState<Record<string, MemberRole>>({});
   const [identity, setIdentity] = useState("");
   const [newRole, setNewRole] = useState<(typeof MANAGEABLE_ROLES)[number]>("member");
   const [pending, setPending] = useState<string | null>(null);
@@ -88,7 +97,7 @@ export function MemberDialog({
         onClose={onClose}
       >
         <div className="flex min-h-0 max-h-[72dvh] flex-col">
-          {canManage && channel.type !== "dm" ? (
+          {addRoles.length ? (
             <div className="border-b p-3">
               <button
                 aria-expanded={addOpen}
@@ -136,7 +145,7 @@ export function MemberDialog({
                       setNewRole(event.target.value as (typeof MANAGEABLE_ROLES)[number])
                     }
                   >
-                    {MANAGEABLE_ROLES.map((role) => (
+                    {addRoles.map((role) => (
                       <option key={role} value={role}>
                         {roleLabel(role)}
                       </option>
@@ -182,15 +191,20 @@ export function MemberDialog({
                         aria-label={t("member.changeRole", { name: profile.name })}
                         className="-ml-1 h-5 max-w-full bg-transparent text-[10px] text-muted-foreground outline-none"
                         disabled={pending !== null}
-                        value={member.role}
-                        onChange={(event) =>
-                          void run(`role:${member.pubkey}`, () =>
-                            onSetMember(
-                              member.pubkey,
-                              event.target.value as (typeof MANAGEABLE_ROLES)[number],
-                            ),
-                          ).catch(() => undefined)
-                        }
+                        value={requestedRoles[member.pubkey] ?? member.role}
+                        onChange={(event) => {
+                          const role = event.target.value as (typeof MANAGEABLE_ROLES)[number];
+                          setRequestedRoles((current) => ({ ...current, [member.pubkey]: role }));
+                          void run(`role:${member.pubkey}`, () => onSetMember(member.pubkey, role))
+                            .catch(() => undefined)
+                            .finally(() =>
+                              setRequestedRoles((current) => {
+                                const next = { ...current };
+                                delete next[member.pubkey];
+                                return next;
+                              }),
+                            );
+                        }}
                       >
                         {MANAGEABLE_ROLES.map((role) => (
                           <option key={role} value={role}>

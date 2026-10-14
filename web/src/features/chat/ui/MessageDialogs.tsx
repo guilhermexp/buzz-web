@@ -42,7 +42,11 @@ export function EditMessageDialog({
             onChange={(event) => setContent(event.target.value)}
           />
         </label>
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="flex justify-end gap-2 border-t pt-4">
           <button
             className="h-9 rounded-md px-3 text-sm hover:bg-foreground/5"

@@ -1,3 +1,7 @@
+import { schnorr } from "@noble/curves/secp256k1.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { decode } from "nostr-tools/nip19";
 import {
   getConversationKey,
@@ -180,6 +184,66 @@ export async function decryptNip44FromPeer(
     }
   }
   throw new Error(t("error.signerLocked"));
+}
+
+/** Encrypt NIP-44 content from the active identity to a peer pubkey. */
+export async function encryptNip44ToPeer(peerPubkey: string, plaintext: string): Promise<string> {
+  if (!activePubkey) throw new Error(t("error.signerLocked"));
+  const normalizedPeer = peerPubkey.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalizedPeer)) throw new Error(t("error.pubkeyInvalid"));
+  if (activeMode === "nip07") {
+    if (!window.nostr?.nip44) throw new Error(t("error.nip44Unavailable"));
+    return window.nostr.nip44.encrypt(normalizedPeer, plaintext);
+  }
+  if (activeMode === "local" && activeSecretKey) {
+    const conversationKey = getConversationKey(activeSecretKey, normalizedPeer);
+    try {
+      return nip44Encrypt(plaintext, conversationKey);
+    } finally {
+      conversationKey.fill(0);
+    }
+  }
+  throw new Error(t("error.signerLocked"));
+}
+
+/** Whether the active signer can produce a raw NIP-OA attestation (NIP-07 signs events only). */
+export function canSignAgentAuthorization(): boolean {
+  return activeMode === "local" && activeSecretKey !== null && activePubkey !== null;
+}
+
+/**
+ * Sign an unconditional NIP-OA owner attestation for `agentPubkey`:
+ * BIP-340 Schnorr over SHA256("nostr:agent-auth:" || agent || ":"). The owner key never leaves
+ * this module; only the resulting public tag is returned.
+ */
+export function signAgentAuthorization(agentPubkey: string): ["auth", string, "", string] {
+  const agent = agentPubkey.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(agent)) throw new Error(t("error.pubkeyInvalid"));
+  if (!canSignAgentAuthorization() || !activeSecretKey || !activePubkey) {
+    throw new Error(t("agents.authRequiresLocalSigner"));
+  }
+  if (agent === activePubkey) throw new Error(t("error.pubkeyInvalid"));
+  const digest = sha256(utf8ToBytes(`nostr:agent-auth:${agent}:`));
+  const signature = schnorr.sign(digest, activeSecretKey);
+  return ["auth", activePubkey, "", bytesToHex(signature)];
+}
+
+/**
+ * HMAC-SHA256 keyed by the NIP-44 conversation key shared with `peerPubkey` (NIP-AE d-tags).
+ * Returns null when the active signer cannot expose the conversation key (NIP-07).
+ */
+export function nip44ConversationHmacFromPeer(
+  peerPubkey: string,
+  message: Uint8Array,
+): Uint8Array | null {
+  const peer = peerPubkey.trim().toLowerCase();
+  if (activeMode !== "local" || !activeSecretKey || !/^[0-9a-f]{64}$/.test(peer)) return null;
+  const conversationKey = getConversationKey(activeSecretKey, peer);
+  try {
+    return hmac(sha256, conversationKey, message);
+  } finally {
+    conversationKey.fill(0);
+  }
 }
 
 export function generateIdentitySecretKey(): Uint8Array {

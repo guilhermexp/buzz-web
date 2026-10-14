@@ -35,16 +35,3 @@ export function detectMentionQuery(
 
   return null;
 }
-
-export function insertMention(
-  value: string,
-  mention: MentionQuery,
-  displayName: string,
-): { value: string; cursorPosition: number } {
-  const replacement = `@${displayName} `;
-  const suffix = value.slice(mention.endIndex);
-  return {
-    value: `${value.slice(0, mention.startIndex)}${replacement}${suffix.startsWith(" ") ? suffix.slice(1) : suffix}`,
-    cursorPosition: mention.startIndex + replacement.length,
-  };
-}

@@ -1,6 +1,8 @@
+import { featureMessages } from "@/shared/i18n/messages";
+
 export type AppLocale = "en" | "zh-CN";
 
-const messages = {
+const coreMessages = {
   "app.title": { en: "Buzz Web", "zh-CN": "Buzz Web" },
   "common.agent": { en: "Agent", "zh-CN": "Agent" },
   "common.cancel": { en: "Cancel", "zh-CN": "取消" },
@@ -54,17 +56,11 @@ const messages = {
   },
   "agents.addTo": { en: "Add to #{channel}", "zh-CN": "加入 #{channel}" },
   "agents.away": { en: "Away", "zh-CN": "离开" },
-  "agents.backToList": { en: "Back to agents", "zh-CN": "返回 Agent 列表" },
-  "agents.capabilities": { en: "Capabilities", "zh-CN": "能力" },
-  "agents.capabilityDefault": { en: "Chat and tools", "zh-CN": "聊天与工具" },
   "agents.channelCount": { en: "{count} channels", "zh-CN": "{count} 个频道" },
   "agents.channelCountOne": { en: "1 channel", "zh-CN": "1 个频道" },
   "agents.channels": { en: "Channel access", "zh-CN": "频道访问" },
   "agents.close": { en: "Close Agents", "zh-CN": "关闭 Agents" },
   "agents.closeProfile": { en: "Close agent profile", "zh-CN": "关闭 Agent 详情" },
-  "agents.count": { en: "{count} remote agents", "zh-CN": "{count} 个远程 Agent" },
-  "agents.countOne": { en: "1 remote agent", "zh-CN": "1 个远程 Agent" },
-  "agents.defaults": { en: "Agent defaults", "zh-CN": "Agent 默认设置" },
   "agents.empty": { en: "No Relay agents found", "zh-CN": "Relay 中没有 Agent" },
   "agents.loading": { en: "Loading agents", "zh-CN": "正在加载 Agent" },
   "agents.message": { en: "Message", "zh-CN": "私聊" },
@@ -80,18 +76,11 @@ const messages = {
   "agents.respondDefault": { en: "Agent default", "zh-CN": "Agent 默认策略" },
   "agents.respondOwner": { en: "Owner only", "zh-CN": "仅 Owner" },
   "agents.responsePolicy": { en: "Responds to", "zh-CN": "响应对象" },
-  "agents.runningCount": { en: "{count} running", "zh-CN": "{count} 个运行中" },
-  "agents.search": { en: "Search agents", "zh-CN": "搜索 Agent" },
-  "agents.start": { en: "Start {name}", "zh-CN": "启动 {name}" },
   "agents.subtitle": {
     en: "Set up and manage your agents.",
     "zh-CN": "设置和管理你的 Agent。",
   },
   "agents.teams": { en: "Agent teams", "zh-CN": "Agent 团队" },
-  "agents.teamsDescription": {
-    en: "Group agents that you can add to a channel together.",
-    "zh-CN": "按频道查看协作的 Agent 组合。",
-  },
   "agents.noTeams": { en: "No agent teams yet", "zh-CN": "暂无 Agent 团队" },
   "agents.title": { en: "Agents", "zh-CN": "Agents" },
   "channel.all": { en: "All", "zh-CN": "全部" },
@@ -613,11 +602,6 @@ const messages = {
     en: "Agent control URL must use HTTPS.",
     "zh-CN": "Agent 控制地址必须使用 HTTPS。",
   },
-  "error.agentStart": { en: "Failed to start the agent.", "zh-CN": "Agent 启动失败。" },
-  "error.agentStartUnavailable": {
-    en: "This remote agent has no configured start controller.",
-    "zh-CN": "此远程 Agent 未配置启动控制端。",
-  },
   "error.clipboard": { en: "Failed to copy to the clipboard.", "zh-CN": "复制到剪贴板失败。" },
   "error.configLoad": { en: "Failed to load configuration.", "zh-CN": "无法加载配置。" },
   "error.identityUnlock": { en: "Failed to unlock identity.", "zh-CN": "身份解锁失败。" },
@@ -771,6 +755,10 @@ const messages = {
     "zh-CN": "无法加载 Web 配置 ({status})",
   },
 } as const;
+
+// Feature-owned copy lives in `shared/i18n/messages/<feature>.ts`; every entry
+// is typed to require both locales (see `defineMessages`).
+const messages = { ...coreMessages, ...featureMessages } as const;
 
 export type MessageKey = keyof typeof messages;
 

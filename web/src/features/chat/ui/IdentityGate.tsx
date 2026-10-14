@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import buzzAppIcon from "@/assets/app-icon@3x.png";
+import type { CommunityControls } from "@/features/workspace/ui/CommunityRail";
 import type { RuntimeConfig } from "@/shared/config/runtime-config";
 import { t } from "@/shared/i18n";
 import {
@@ -40,9 +41,12 @@ function shortPubkey(pubkey: string): string {
 
 export function IdentityGate({
   config,
+  communities,
   children,
 }: {
   config: RuntimeConfig;
+  /** Saved communities; the gate lets the user pick one before unlocking. */
+  communities?: Pick<CommunityControls, "communities" | "activeId" | "onSelect">;
   children: (identity: { pubkey: string; signOut: () => void; demo: boolean }) => React.ReactNode;
 }) {
   const [pubkey, setPubkey] = useState<string | null>(() =>
@@ -136,6 +140,22 @@ export function IdentityGate({
           <img alt="Buzz" className="mx-auto h-14 w-14 rounded-[13px]" src={buzzAppIcon} />
           <h1 className="mt-4 text-xl font-semibold">{config.communityName}</h1>
           <p className="mt-1 truncate text-xs text-muted-foreground">{config.relayUrl}</p>
+          {communities && communities.communities.length > 1 ? (
+            <label className="mx-auto mt-4 block max-w-72 text-left text-xs font-medium">
+              {t("workspace.community.switch")}
+              <select
+                className="mt-1.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                value={communities.activeId}
+                onChange={(event) => communities.onSelect(event.target.value)}
+              >
+                {communities.communities.map((community) => (
+                  <option key={community.id} value={community.id}>
+                    {community.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         {checkingVault ? (

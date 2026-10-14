@@ -4,6 +4,7 @@ export type MarkdownNode = {
   children?: MarkdownNode[];
   data?: {
     hName: string;
+    hProperties?: Record<string, string>;
     hChildren: Array<{ type: "text"; value: string }>;
   };
 };

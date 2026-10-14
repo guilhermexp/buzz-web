@@ -48,7 +48,7 @@ async function waitForRelay(page: Page) {
     .filter({ hasText: "Status" })
     .locator("xpath=following-sibling::dd[1]");
   await expect(status).toHaveText("Connected", { timeout: 30_000 });
-  await settings.getByRole("button", { name: "Back" }).click();
+  await settings.getByRole("button", { name: "Back", exact: true }).click();
 }
 
 async function importIdentity(page: Page, identity: LiveIdentity) {
@@ -165,7 +165,7 @@ async function exerciseReconnectInboxRecovery(
 ) {
   await memberPage
     .getByTestId("workspace-tool-settings")
-    .getByRole("button", { name: "Back" })
+    .getByRole("button", { name: "Back", exact: true })
     .click();
   const memberRootText = `member reconnect root ${runId}`;
   const memberComposer = memberPage.getByLabel(`Send a message to #${channelName}`);
@@ -180,6 +180,7 @@ async function exerciseReconnectInboxRecovery(
   await memberPage.keyboard.press("Control+,");
   const settings = memberPage.getByTestId("workspace-tool-settings");
   await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Identity" }).click();
   const status = settings
     .locator("dt")
     .filter({ hasText: "Status" })
@@ -188,6 +189,10 @@ async function exerciseReconnectInboxRecovery(
 
   await memberContext.setOffline(true);
   await expect(status).toHaveText(/Disconnected|Reconnecting/, { timeout: 30_000 });
+  // Read markers have whole-second resolution and an event counts as unread only when
+  // created_at > marker (same rule as desktop). Keep the reply out of the second in
+  // which the member's own root marked the channel read.
+  await adminPage.waitForTimeout(1_100);
 
   const replyText = `reply delivered after reconnect ${runId}`;
   await adminRoot.hover();
@@ -232,7 +237,7 @@ async function exerciseMessageLifecycle(
   await page.reload();
   await unlockIdentity(page, admin);
   await openChannel(page, channelName);
-  await expect(composer).toHaveValue(draft);
+  await expect(composer).toHaveText(draft);
 
   const original = `live root ${runId}`;
   const edited = `live root edited ${runId}`;
@@ -282,7 +287,8 @@ async function exerciseMessageLifecycle(
   await expect(root).toHaveAttribute("data-deleted", "true", { timeout: 30_000 });
   await expect(root).toContainText("This message was deleted");
   await expect(root.getByRole("button", { name: "1 replies" })).toBeVisible();
-  await expect(root.getByRole("button", { name: "👀, 1 reactions" })).toBeVisible();
+  // A tombstone keeps its thread but no longer offers reactions on removed content.
+  await expect(root.getByRole("button", { name: "👀, 1 reactions" })).toHaveCount(0);
 }
 
 async function archiveChannel(page: Page, channelName: string) {

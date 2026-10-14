@@ -1,323 +1,107 @@
+import { LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import type { AgentPersona } from "@/features/agents/lib/catalog-model";
+import { AgentCard } from "@/features/agents/ui/AgentCard";
+import { AgentDetailPanel } from "@/features/agents/ui/AgentDetailPanel";
+import { errorMessage, primaryButtonClass } from "@/features/agents/ui/agent-labels";
 import {
-  LoaderCircle,
-  MessageSquare,
-  MoreVertical,
-  Play,
-  Plus,
-  RefreshCw,
-  Settings2,
-  ShieldCheck,
-  Users,
-  X,
-} from "lucide-react";
-import { useState } from "react";
-import type { RelayAgent } from "@/features/agents/lib/relay-agents";
-import type { BuzzChannel, UserProfile } from "@/features/chat/lib/chat-types";
-import { Avatar } from "@/features/chat/ui/Avatar";
+  draftConfig,
+  draftFromPersona,
+  EMPTY_AGENT_DRAFT,
+  type ManagedAgentDraft,
+  ManagedAgentForm,
+} from "@/features/agents/ui/ManagedAgentForm";
+import { PersonaCatalog } from "@/features/agents/ui/PersonaCatalog";
+import { TeamCatalog } from "@/features/agents/ui/TeamCatalog";
+import { useAgentCatalog } from "@/features/agents/use-agent-catalog";
+import { useManagedAgents } from "@/features/agents/use-managed-agents";
+import { useRelayAgents } from "@/features/agents/use-relay-agents";
+import { useWorkspace } from "@/features/chat/lib/workspace-context";
+import { DialogFrame } from "@/features/chat/ui/AppDialogs";
 import { t } from "@/shared/i18n";
 import { truncatePubkey } from "@/shared/lib/pubkey";
-import { RightPanelResizeHandle, useRightPanelWidth } from "@/shared/ui/right-panel-sizing";
 
-function statusLabel(status: RelayAgent["status"]): string {
-  if (status === "online") return t("agents.online");
-  if (status === "away") return t("agents.away");
-  return t("agents.offline");
-}
-
-function responsePolicy(agent: RelayAgent): string {
-  if (agent.respondTo === "anyone") return t("agents.respondAnyone");
-  if (agent.respondTo === "allowlist") return t("agents.respondAllowlist");
-  if (agent.respondTo === "owner-only") return t("agents.respondOwner");
-  return t("agents.respondDefault");
-}
-
-function manageableChannelCount(agent: RelayAgent, channels: readonly BuzzChannel[]): number {
-  return channels.filter(
-    (channel) => channel.type !== "dm" && agent.channelIds.includes(channel.id),
-  ).length;
-}
-
-function channelCountLabel(count: number): string {
-  return t(count === 1 ? "agents.channelCountOne" : "agents.channelCount", { count });
-}
-
-function fallbackProfile(agent: RelayAgent): UserProfile {
-  return {
-    pubkey: agent.pubkey,
-    name: agent.name,
-    about: agent.about,
-    picture: null,
-    isAgent: true,
-  };
-}
-
-function AgentDetail({
-  agent,
-  channels,
-  profiles,
-  relayUrl,
-  pendingAction,
-  startingPubkey,
-  maximumWidth,
-  minimumWidth,
-  panelWidth,
-  onBack,
-  onResize,
-  onSetChannel,
-  onStartAgent,
-  onOpenDm,
-}: {
-  agent: RelayAgent;
-  channels: readonly BuzzChannel[];
-  profiles: Readonly<Record<string, UserProfile>>;
-  relayUrl: string;
-  pendingAction: string | null;
-  startingPubkey: string | null;
-  maximumWidth: number;
-  minimumWidth: number;
-  panelWidth: number;
-  onBack: () => void;
-  onResize: (width: number) => void;
-  onSetChannel: (agentPubkey: string, channelId: string, shouldJoin: boolean) => Promise<void>;
-  onStartAgent: (pubkey: string) => Promise<void>;
-  onOpenDm: (pubkey: string) => Promise<void>;
-}) {
-  const assignableChannels = channels.filter((channel) => channel.type !== "dm");
-  const profile = { ...(profiles[agent.pubkey] ?? fallbackProfile(agent)), isAgent: true };
-
-  return (
-    <aside
-      aria-label={t("agents.manage", { name: agent.name })}
-      className="absolute inset-y-0 right-0 z-30 flex min-h-0 shrink-0 flex-col border-l bg-background/98 shadow-xl max-sm:!w-full"
-      style={{ width: panelWidth }}
-    >
-      <RightPanelResizeHandle
-        label={t("agents.resize")}
-        maximum={maximumWidth}
-        minimum={minimumWidth}
-        panelWidth={panelWidth}
-        onResize={onResize}
-      />
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{agent.name}</h2>
-        <button
-          aria-label={t("agents.closeProfile")}
-          className="buzz-icon-button h-7 w-7 flex-none"
-          title={t("agents.closeProfile")}
-          type="button"
-          onClick={onBack}
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </header>
-      <div className="buzz-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="space-y-6">
-          <div>
-            <div className="flex items-start gap-3 border-b pb-5">
-              <Avatar
-                profile={profile}
-                relayUrl={relayUrl}
-                size={56}
-                showStatus
-                status={agent.status}
-              />
-              <div className="min-w-0 flex-1">
-                <h3 className="break-words text-lg font-semibold">{agent.name}</h3>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
-                    {t("agents.remote")}
-                  </span>
-                  <span
-                    className={`text-xs ${
-                      agent.status === "online"
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {statusLabel(agent.status)}
-                  </span>
-                </div>
-                {agent.about || agent.agentType ? (
-                  <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-muted-foreground">
-                    {agent.about || agent.agentType}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              <button
-                className="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border px-3 text-xs font-medium hover:bg-foreground/5"
-                type="button"
-                onClick={() => void onOpenDm(agent.pubkey)}
-              >
-                <MessageSquare className="h-4 w-4" />
-                {t("agents.message")}
-              </button>
-              {agent.status === "offline" && agent.startable ? (
-                <button
-                  className="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md bg-foreground px-3 text-xs font-medium text-background disabled:opacity-50"
-                  disabled={startingPubkey !== null}
-                  type="button"
-                  onClick={() => void onStartAgent(agent.pubkey)}
-                >
-                  {startingPubkey === agent.pubkey ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Play className="h-4 w-4 fill-current" />
-                  )}
-                  {t("agents.start", { name: agent.name })}
-                </button>
-              ) : null}
-            </div>
-
-            <dl className="grid gap-5 border-b py-5 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  {t("agents.responsePolicy")}
-                </dt>
-                <dd className="mt-2 flex items-center gap-2 text-sm">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  {responsePolicy(agent)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  {t("field.publicKey")}
-                </dt>
-                <dd className="mt-2 break-all font-mono text-xs" title={agent.pubkey}>
-                  {truncatePubkey(agent.pubkey)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  {t("agents.capabilities")}
-                </dt>
-                <dd className="mt-2 break-words text-sm">
-                  {agent.capabilities.length
-                    ? agent.capabilities.join(", ")
-                    : t("agents.capabilityDefault")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  {t("agents.channels")}
-                </dt>
-                <dd className="mt-2 text-sm">
-                  {channelCountLabel(manageableChannelCount(agent, channels))}
-                </dd>
-              </div>
-            </dl>
-          </div>
-
-          <section className="pb-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">{t("agents.channels")}</h3>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {channelCountLabel(manageableChannelCount(agent, channels))}
-              </span>
-            </div>
-            <div className="divide-y rounded-lg border bg-background/25">
-              {assignableChannels.map((channel) => {
-                const joined = agent.channelIds.includes(channel.id);
-                const actionKey = `${agent.pubkey}:${channel.id}`;
-                return (
-                  <div key={channel.id} className="flex min-h-14 items-center gap-2 px-3 py-2">
-                    <span className="text-muted-foreground">#</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{channel.name}</div>
-                      {channel.description ? (
-                        <div className="truncate text-[11px] text-muted-foreground">
-                          {channel.description}
-                        </div>
-                      ) : null}
-                    </div>
-                    <button
-                      aria-label={
-                        joined
-                          ? t("agents.removeFrom", { channel: channel.name })
-                          : t("agents.addTo", { channel: channel.name })
-                      }
-                      className="buzz-icon-button h-7 w-7 flex-none"
-                      disabled={pendingAction !== null}
-                      title={
-                        joined
-                          ? t("agents.removeFrom", { channel: channel.name })
-                          : t("agents.addTo", { channel: channel.name })
-                      }
-                      type="button"
-                      onClick={() => void onSetChannel(agent.pubkey, channel.id, !joined)}
-                    >
-                      {pendingAction === actionKey ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : joined ? (
-                        <X className="h-4 w-4" />
-                      ) : (
-                        <Plus className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-              {!assignableChannels.length ? (
-                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  {t("agents.noChannels")}
-                </p>
-              ) : null}
-            </div>
-          </section>
-        </div>
-      </div>
-    </aside>
-  );
-}
+type ViewTab = "agents" | "personas" | "teams";
 
 export function AgentsView({
-  agents,
-  channels,
-  profiles,
-  relayUrl,
-  loading,
-  error,
-  pendingAction,
-  startingPubkey,
   onClose,
-  onRefresh,
-  onSetChannel,
-  onStartAgent,
   onOpenDm,
 }: {
-  agents: readonly RelayAgent[];
-  channels: readonly BuzzChannel[];
-  profiles: Readonly<Record<string, UserProfile>>;
-  relayUrl: string;
-  loading: boolean;
-  error: string | null;
-  pendingAction: string | null;
-  startingPubkey: string | null;
   onClose: () => void;
-  onRefresh: () => void;
-  onSetChannel: (agentPubkey: string, channelId: string, shouldJoin: boolean) => Promise<void>;
-  onStartAgent: (pubkey: string) => Promise<void>;
   onOpenDm: (pubkey: string) => Promise<void>;
 }) {
+  const { relayUrl, profiles, channels, pubkey, demo, ensureProfiles } = useWorkspace();
+  const managed = useManagedAgents();
+  const relayAgents = useRelayAgents(managed);
+  const catalog = useAgentCatalog();
+  const me = pubkey.toLowerCase();
+  const [tab, setTab] = useState<ViewTab>("agents");
   const [selectedPubkey, setSelectedPubkey] = useState<string | null>(null);
-  const [defaultsOpen, setDefaultsOpen] = useState(false);
-  const selected = agents.find((agent) => agent.pubkey === selectedPubkey) ?? null;
-  const {
-    maximum: maximumAgentWidth,
-    minimum: minimumAgentWidth,
-    panelWidth: agentPanelWidth,
-    setPanelWidth: setAgentPanelWidth,
-  } = useRightPanelWidth("agent");
-  const runningCount = agents.filter((agent) => agent.status !== "offline").length;
-  const channelTeams = channels
-    .filter((channel) => channel.type !== "dm")
-    .map((channel) => ({
-      channel,
-      agents: agents.filter((agent) => agent.channelIds.includes(channel.id)),
-    }))
-    .filter((team) => team.agents.length > 0);
+  const [creating, setCreating] = useState<ManagedAgentDraft | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const selected = relayAgents.agents.find((agent) => agent.pubkey === selectedPubkey) ?? null;
+  const ownerKey = useMemo(
+    () =>
+      [
+        ...new Set(
+          relayAgents.agents.flatMap((agent) => (agent.ownerPubkey ? [agent.ownerPubkey] : [])),
+        ),
+      ]
+        .sort()
+        .join(","),
+    [relayAgents.agents],
+  );
+
+  useEffect(() => {
+    if (ownerKey) void ensureProfiles(ownerKey.split(","));
+  }, [ensureProfiles, ownerKey]);
+
+  const ownerLabel = (owner: string | null) =>
+    owner === null
+      ? null
+      : owner === me
+        ? t("agents.ownerYou")
+        : (profiles[owner]?.name ?? truncatePubkey(owner));
+
+  const startCreate = (persona?: AgentPersona) => {
+    setCreateError(null);
+    setCreating(persona ? draftFromPersona(EMPTY_AGENT_DRAFT, persona, me) : EMPTY_AGENT_DRAFT);
+    setTab("agents");
+  };
+
+  const submitCreate = async (draft: ManagedAgentDraft) => {
+    setCreateError(null);
+    try {
+      const agent = await managed.create.mutateAsync({
+        name: draft.name,
+        config: draftConfig(draft),
+      });
+      const failed: string[] = [];
+      for (const channelId of draft.channels) {
+        if (!(await relayAgents.setAgentChannel(agent.pubkey, channelId, true)))
+          failed.push(channelId);
+      }
+      setCreating(null);
+      setSelectedPubkey(agent.pubkey);
+      if (failed.length) toast.error(t("agents.createChannelsFailed", { count: failed.length }));
+      else toast.success(t("agents.created", { name: agent.name }));
+    } catch (error) {
+      setCreateError(errorMessage(error, t("agents.createFailed")));
+      void managed.refresh();
+    }
+  };
+
+  const loading = relayAgents.loading || managed.loading;
+  const tabs: Array<{ id: ViewTab; label: string }> = [
+    { id: "agents", label: t("agents.tabAgents") },
+    ...(catalog.enabled
+      ? [
+          { id: "personas" as const, label: t("agents.tabPersonas") },
+          { id: "teams" as const, label: t("agents.tabTeams") },
+        ]
+      : []),
+  ];
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -329,39 +113,23 @@ export function AgentsView({
               <p className="mt-1 text-sm text-muted-foreground">{t("agents.subtitle")}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <button
-                  aria-expanded={defaultsOpen}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border bg-background/25 px-3 text-xs font-medium hover:bg-foreground/5"
-                  type="button"
-                  onClick={() => setDefaultsOpen((open) => !open)}
-                >
-                  <Settings2 className="h-4 w-4" />
-                  {t("agents.defaults")}
+              {managed.canCreate ? (
+                <button className={primaryButtonClass} type="button" onClick={() => startCreate()}>
+                  <Plus className="h-4 w-4" />
+                  {t("agents.newAgent")}
                 </button>
-                {defaultsOpen ? (
-                  <div className="absolute right-0 top-11 z-20 w-64 rounded-lg border bg-popover p-4 shadow-lg">
-                    <div className="text-xs font-semibold">{t("agents.defaults")}</div>
-                    <dl className="mt-3 space-y-3 text-xs">
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">{t("agents.responsePolicy")}</dt>
-                        <dd>{t("agents.respondDefault")}</dd>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">{t("field.status")}</dt>
-                        <dd>{t("agents.runningCount", { count: runningCount })}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
               <button
                 aria-label={t("common.refresh")}
                 className="buzz-icon-button"
                 disabled={loading}
                 title={t("common.refresh")}
                 type="button"
-                onClick={onRefresh}
+                onClick={() => {
+                  void relayAgents.refresh();
+                  void managed.refresh();
+                  void catalog.refresh();
+                }}
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               </button>
@@ -377,162 +145,133 @@ export function AgentsView({
             </div>
           </header>
 
-          {error ? (
-            <div className="mt-5 rounded-md bg-destructive/8 px-3 py-2 text-xs text-destructive">
-              {error}
+          {managed.available && !managed.canCreate ? (
+            <p className="mt-4 rounded-md bg-foreground/[0.04] px-3 py-2 text-xs text-muted-foreground">
+              {t("agents.authRequiresLocalSigner")}
+            </p>
+          ) : null}
+          {managed.error ? (
+            <p
+              className="mt-4 rounded-md bg-destructive/8 px-3 py-2 text-xs text-destructive"
+              role="alert"
+            >
+              {t("agents.controlListFailed", {
+                detail: errorMessage(managed.error, t("agents.controlUnreachable")),
+              })}
+            </p>
+          ) : null}
+          {relayAgents.error && !selected ? (
+            <p
+              className="mt-4 rounded-md bg-destructive/8 px-3 py-2 text-xs text-destructive"
+              role="alert"
+            >
+              {relayAgents.error}
+            </p>
+          ) : null}
+
+          {tabs.length > 1 ? (
+            <div
+              aria-label={t("agents.viewSections")}
+              className="mt-6 flex gap-1 border-b"
+              role="tablist"
+            >
+              {tabs.map((item) => (
+                <button
+                  key={item.id}
+                  aria-selected={tab === item.id}
+                  className={`h-9 border-b-2 px-3 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring ${
+                    tab === item.id
+                      ? "border-foreground text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                  role="tab"
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
           ) : null}
 
-          <section className="mt-7">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {agents.map((agent) => {
-                const profile = {
-                  ...(profiles[agent.pubkey] ?? fallbackProfile(agent)),
-                  isAgent: true,
-                };
-                return (
-                  <article
-                    key={agent.pubkey}
-                    className="relative flex min-h-[300px] flex-col rounded-lg border bg-background/25 p-4"
-                  >
-                    <button
-                      aria-label={t("agents.manage", { name: agent.name })}
-                      className="buzz-icon-button absolute right-3 top-3"
-                      title={t("agents.manage", { name: agent.name })}
-                      type="button"
-                      onClick={() => setSelectedPubkey(agent.pubkey)}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-
-                    <button
-                      aria-label={t("agents.manage", { name: agent.name })}
-                      className="mx-auto mt-12 flex h-28 w-28 items-center justify-center rounded-full bg-foreground/[0.035]"
-                      type="button"
-                      onClick={() => setSelectedPubkey(agent.pubkey)}
-                    >
-                      <Avatar
-                        profile={profile}
-                        relayUrl={relayUrl}
-                        size={104}
-                        showStatus
-                        status={agent.status}
-                      />
-                    </button>
-
-                    <div className="absolute left-1/2 top-[142px] ml-8 flex h-10 w-10 items-center justify-center">
-                      {agent.status === "offline" && agent.startable ? (
-                        <button
-                          aria-label={t("agents.start", { name: agent.name })}
-                          className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground text-background shadow-sm hover:opacity-90 disabled:opacity-70"
-                          disabled={startingPubkey !== null}
-                          title={t("agents.start", { name: agent.name })}
-                          type="button"
-                          onClick={() => void onStartAgent(agent.pubkey)}
-                        >
-                          {startingPubkey === agent.pubkey ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Play className="ml-0.5 h-4 w-4 fill-current" />
-                          )}
-                        </button>
-                      ) : (
-                        <span
-                          aria-label={statusLabel(agent.status)}
-                          className={`h-5 w-5 rounded-full border-[3px] border-background shadow-sm ${
-                            agent.status === "online"
-                              ? "bg-emerald-500"
-                              : agent.status === "away"
-                                ? "bg-amber-500"
-                                : "bg-neutral-400"
-                          }`}
-                          role="img"
-                          title={statusLabel(agent.status)}
-                        />
-                      )}
-                    </div>
-
-                    <div className="mt-auto pt-8">
-                      <div className="truncate text-sm font-semibold">{agent.name}</div>
-                      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                        <span
-                          className={
-                            agent.status === "online"
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : ""
-                          }
-                        >
-                          {statusLabel(agent.status)}
-                        </span>
-                        <span>·</span>
-                        <span className="truncate">{responsePolicy(agent)}</span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-
-            {loading && !agents.length ? (
-              <div className="flex items-center justify-center px-3 py-16 text-sm text-muted-foreground">
-                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                {t("agents.loading")}
-              </div>
-            ) : null}
-            {!loading && !agents.length ? (
-              <div className="px-3 py-16 text-center text-sm text-muted-foreground">
-                {t("agents.empty")}
-              </div>
-            ) : null}
-          </section>
-
-          <section className="mt-10 pb-8">
-            <h3 className="text-xl font-semibold">{t("agents.teams")}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{t("agents.teamsDescription")}</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {channelTeams.map(({ channel, agents: teamAgents }) => (
-                <div
-                  key={channel.id}
-                  className="flex min-h-20 items-center gap-3 rounded-lg border p-4"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.055]">
-                    <Users className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">#{channel.name}</div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {teamAgents.map((agent) => agent.name).join(", ")}
-                    </div>
+          <div className="mt-6 pb-8" role={tabs.length > 1 ? "tabpanel" : undefined}>
+            {tab === "agents" ? (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {relayAgents.agents.map((agent) => (
+                    <AgentCard
+                      key={agent.pubkey}
+                      agent={agent}
+                      ownerLabel={ownerLabel(agent.ownerPubkey)}
+                      profile={{
+                        ...(profiles[agent.pubkey] ?? {
+                          pubkey: agent.pubkey,
+                          name: agent.name,
+                          about: agent.about,
+                          picture: null,
+                        }),
+                        isAgent: true,
+                      }}
+                      relayUrl={relayUrl}
+                      onSelect={() => setSelectedPubkey(agent.pubkey)}
+                    />
+                  ))}
+                </div>
+                {loading && !relayAgents.agents.length ? (
+                  <div className="flex items-center justify-center px-3 py-16 text-sm text-muted-foreground">
+                    <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                    {t("agents.loading")}
                   </div>
-                  <span className="text-xs text-muted-foreground">{teamAgents.length}</span>
-                </div>
-              ))}
-              {!channelTeams.length ? (
-                <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed px-4 text-sm text-muted-foreground">
-                  {t("agents.noTeams")}
-                </div>
-              ) : null}
-            </div>
-          </section>
+                ) : null}
+                {!loading && !relayAgents.agents.length ? (
+                  <div className="px-3 py-16 text-center text-sm text-muted-foreground">
+                    {managed.canCreate ? t("agents.emptyCanCreate") : t("agents.empty")}
+                  </div>
+                ) : null}
+              </>
+            ) : tab === "personas" ? (
+              <PersonaCatalog
+                canCreateAgent={managed.canCreate}
+                catalog={catalog}
+                onCreateAgent={startCreate}
+              />
+            ) : (
+              <TeamCatalog catalog={catalog} />
+            )}
+          </div>
         </div>
       </div>
       {selected ? (
-        <AgentDetail
+        <AgentDetailPanel
           agent={selected}
-          channels={channels}
-          maximumWidth={maximumAgentWidth}
-          minimumWidth={minimumAgentWidth}
-          panelWidth={agentPanelWidth}
-          pendingAction={pendingAction}
-          profiles={profiles}
-          relayUrl={relayUrl}
-          startingPubkey={startingPubkey}
-          onBack={() => setSelectedPubkey(null)}
+          managed={managed}
+          personas={catalog.catalog.personas}
+          relayAgents={relayAgents}
+          onClose={() => setSelectedPubkey(null)}
           onOpenDm={onOpenDm}
-          onResize={setAgentPanelWidth}
-          onSetChannel={onSetChannel}
-          onStartAgent={onStartAgent}
         />
+      ) : null}
+      {creating ? (
+        <DialogFrame
+          title={t("agents.newAgent")}
+          width="max-w-xl"
+          onClose={() => setCreating(null)}
+        >
+          <div className="buzz-scrollbar max-h-[calc(85dvh-3.25rem)] overflow-y-auto p-4">
+            <p className="mb-4 text-xs leading-5 text-muted-foreground">{t("agents.createHint")}</p>
+            <ManagedAgentForm
+              channels={demo ? [] : channels}
+              error={createError}
+              initial={creating}
+              mode="create"
+              owner={me}
+              pending={managed.create.isPending}
+              personas={catalog.catalog.personas}
+              onCancel={() => setCreating(null)}
+              onSubmit={(draft) => void submitCreate(draft)}
+            />
+          </div>
+        </DialogFrame>
       ) : null}
     </div>
   );

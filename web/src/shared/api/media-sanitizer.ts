@@ -513,12 +513,41 @@ async function sanitizeStaticImage(bytes: Uint8Array, mimeType: SupportedImageMi
   }
 }
 
+const VOICE_NOTE_FILENAME = /^voice-note-\d+\.wav$/;
+const WAV_ALLOWED_CHUNKS = new Set(["fmt ", "data", "fact"]);
+
+/**
+ * Desktop-compatible voice notes are recorder-generated mono WAV files. Accept them only
+ * with a canonical RIFF/WAVE structure free of metadata chunks (LIST/INFO, id3, bext…),
+ * so the bytes can be uploaded unmodified and keep their recorded sha256.
+ */
+export function isCleanVoiceNoteWav(name: string, bytes: Uint8Array): boolean {
+  if (!VOICE_NOTE_FILENAME.test(name)) return false;
+  if (!matchesAscii(bytes, 0, "RIFF") || !matchesAscii(bytes, 8, "WAVE")) return false;
+  if (readU32(bytes, 4, true) + 8 !== bytes.byteLength) return false;
+  let offset = 12;
+  let hasFormat = false;
+  let hasData = false;
+  while (offset + 8 <= bytes.byteLength) {
+    const kind = ascii(bytes, offset);
+    const size = readU32(bytes, offset + 4, true);
+    if (!WAV_ALLOWED_CHUNKS.has(kind)) return false;
+    if (kind === "fmt ") hasFormat = true;
+    if (kind === "data") hasData = true;
+    offset += 8 + size + (size % 2);
+  }
+  return hasFormat && hasData && offset === bytes.byteLength;
+}
+
 export async function prepareAttachmentUpload(file: File): Promise<PreparedUpload> {
   const original = await file.arrayBuffer();
   const bytes = new Uint8Array(original);
   const imageMime = detectImageMime(bytes);
   if (!imageMime) {
     const declaredType = file.type.trim().toLocaleLowerCase();
+    if ((!declaredType || declaredType === "audio/wav") && isCleanVoiceNoteWav(file.name, bytes)) {
+      return { bytes: original, mimeType: "audio/wav" };
+    }
     const filenameParts = file.name.split(".");
     const extension = filenameParts[filenameParts.length - 1]?.toLocaleLowerCase() ?? "";
     if (

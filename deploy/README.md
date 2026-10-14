@@ -12,10 +12,31 @@ Buzz Web 是连接现有 Buzz Relay 的静态单页客户端。Web 容器与 Rel
 | --- | --- | --- | --- |
 | ALB | `buzz.example.com` | 全部 | `10.0.0.10:3000` |
 | edge | 原样保留 | `/app`、`/app/*` | `10.0.0.10:3001` |
+| edge | 原样保留 | `/app/api/agent-control/*` | 可选 Agent Control（宿主机回环地址） |
 | edge | 原样保留 | `/pair` | pairing sidecar |
 | edge | 原样保留 | 其他路径 | Relay 容器 |
 
 WebSocket、`/api/*`、`/git/*`、`/upload` 和 `/media/*` 仍由 Relay 处理。`deploy/Caddyfile.edge` 是通用示例；在 Relay edge 容器中设置 `BUZZ_WEB_UPSTREAM` 为 Web 可达地址。入口代理必须保留原始 `Host` 并支持 WebSocket `Upgrade`。
+
+### 可选：Agent Control
+
+Agent Control 不在 `compose.yml` 中：它驱动 **rootless** Docker 守护进程，绝不能使用系统
+`/var/run/docker.sock`（服务会拒绝），也不能放进挂载了 Docker socket 的容器。请在宿主机上以
+rootless Docker 用户运行（例如带 `NoNewPrivileges=true` 的 systemd user unit），监听
+`127.0.0.1:8095`，并配置：
+
+- `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`（rootless 守护进程）；`BUZZ_BIN_DIR` 中放置为
+  Ubuntu 24.04 glibc 构建的 `buzz`、`buzz-acp`、`buzz-agent`、`buzz-dev-mcp`；
+- `GRANTS_FILE`（owner → 社区 Relay URL → 权限/工作区；修改即时生效，撤销会结束正在运行的会话）、
+  `STATE_DIR` 与 `DATA_ROOT` 放在私有存储；
+- `PUBLIC_BASE_URL=https://buzz.example.com/app/api/agent-control`，`ALLOWED_ORIGINS` 设为 Web
+  源，`TRUSTED_PROXY_IPS` 设为 edge 代理；
+- 模型凭据只放在该服务自己的环境（`AGENT_LLM_*`）。
+
+TLS 在负载均衡/edge 终止，不要直接暴露监听端口。工作负载容器只获得自己的数据目录和只读 Buzz
+二进制，没有 Docker socket、宿主机网络或发布端口。然后在 `config.json` 中设置
+`"agentControlUrl": "https://buzz.example.com/app/api/agent-control"`。完整说明见
+[agent-control/README.md](../agent-control/README.md)。
 
 ## 启动
 

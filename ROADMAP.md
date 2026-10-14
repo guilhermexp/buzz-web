@@ -17,8 +17,7 @@ browser client easier to operate safely as an independent open-source project.
 
 ## P0: Collaboration Fundamentals
 
-> **Status:** implemented and deployed to the test environment. Authenticated acceptance against
-> the real Relay is still required before release. The credential-isolated automated run and the
+> **Status:** implemented; the credential-isolated automated run passes against a real Relay. The
 > remaining Desktop cross-client checks are documented in
 > [P0 Real Relay Acceptance](docs/p0-relay-acceptance.md).
 
@@ -62,9 +61,11 @@ switching.
 
 ### Remote agent operations
 
-> **Status:** Web now supports owner-encrypted, channel-scoped live observer activity with bounded
-> in-memory retention; see [Live Agent Observer Activity](docs/agent-observer-activity.md).
-> Persistent history and authenticated control-plane operations remain planned.
+> **Status:** implemented with Agent Control `/v1` (contained agents on rootless Docker, NIP-98 with
+> replay rejection, NIP-OA authorization, redacted logs), owner-private usage and memory views,
+> persona/team catalogs, and a browser-local archive of observed sessions; see
+> [Live Agent Observer Activity](docs/agent-observer-activity.md). The Relay keeps no durable
+> session history, so history covers only what a browser observed.
 
 **Target:** expose remote agent configuration, logs, sessions, memory, persona/team membership,
 response policy, and lifecycle state through an authenticated control-plane contract.
@@ -78,6 +79,10 @@ response policy, and lifecycle state through an authenticated control-plane cont
 - Browser code never attempts to launch a process on the user's local machine.
 
 ### Full Projects workflow
+
+> **Status:** implemented — collections, publish/import, nested browsing, issues, pull requests,
+> revision-exact review and browser merges through the Relay's authorized Git transport.
+> Remaining: in-browser conflict resolution, issue assignment, project/repository deletion.
 
 **Target:** complete nested tree navigation and add project publish/import, issues, pull requests,
 review, merge, and permission-aware write operations.
@@ -93,8 +98,9 @@ review, merge, and permission-aware write operations.
 
 ### Inbox productivity
 
-> **Status:** precise source-message and thread-reply navigation is implemented and deployed.
-> Grouping, reminders, Inbox drafts, project activity, and stable pagination remain planned.
+> **Status:** implemented — exact source navigation, grouped sections, reminders (kind 30300) with
+> due delivery and Inbox actions, and approval items. Remaining: Inbox drafts view, project
+> activity and stable pagination for very large Inboxes.
 
 **Target:** add conversation grouping, precise source-message navigation, reminders, “remind me
 later,” drafts, and project activity.
@@ -107,6 +113,9 @@ later,” drafts, and project activity.
 
 ### Complete Forum experience
 
+> **Status:** implemented and verified across two identities against a real Relay; see
+> [Channel collaboration](docs/channel-collaboration.md).
+
 **Target:** implement topic creation, topic metadata, sorting, moderation, and forum-specific unread
 behavior.
 
@@ -117,6 +126,9 @@ behavior.
 - Moderation actions are role-gated and covered by real-Relay integration tests.
 
 ### Workflow authoring and runs
+
+> **Status:** implemented with the companion Relay's durable approval gates (run leases,
+> checkpointed recovery, suspension, decision, expiry).
 
 **Target:** add workflow lists, editing, triggers, run/step detail, schedules, and webhooks. Existing
 Inbox approval handling remains the first supported action surface.
@@ -129,12 +141,11 @@ Inbox approval handling remains the first supported action surface.
 
 ## P3: Platform Capabilities
 
-Planned research areas include multi-community switching, Web Push notifications, Pulse,
-WebRTC-based Huddles, and a controlled remote terminal. These features need browser-native security
-designs and cannot copy Tauri APIs directly.
-
-Before implementation, each area needs a written threat model, a protocol compatibility decision,
-and a fallback for Relays that do not advertise the required capability.
+> **Status:** multi-community switching, Web Push (relay-executed, VAPID), Pulse, Huddles
+> (Opus over the Relay's audio WebSocket, not WebRTC), voice notes and a contained remote
+> terminal/files/MCP workspace are implemented; see [Voice and Huddles](docs/voice-huddles.md) and
+> [`agent-control/README.md`](agent-control/README.md). Remaining: unread badges for inactive
+> communities, physical-device audio acceptance, Chromium/Safari push acceptance.
 
 ## Continuous Engineering Work
 

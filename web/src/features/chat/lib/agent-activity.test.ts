@@ -427,3 +427,24 @@ describe("live agent activity protocol", () => {
     });
   });
 });
+
+describe("membership-scoped activity", () => {
+  it("rejects frames for channels the agent left and purges cached ones on removal", () => {
+    const store = new AgentActivityStore();
+    let members = new Set([`${AGENT}|${CHANNEL}`]);
+    const accept = (agent: string, channel: string) => members.has(`${agent}|${channel}`);
+    expect(
+      store.ingestRecord(AGENT, requiredFrame({ seq: 1, channelId: CHANNEL }), 1_000, accept),
+    ).toMatchObject({ channelId: CHANNEL });
+    expect(
+      store.ingestRecord(AGENT, requiredFrame({ seq: 2, channelId: "other" }), 1_001, accept),
+    ).toBeNull();
+    store.markSubmitted(CHANNEL, [AGENT], 1_002);
+
+    members = new Set();
+    expect(store.retainMembership(accept)).toBe(true);
+    expect(store.getItems(CHANNEL, [AGENT])).toEqual([]);
+    expect(store.getStatuses(CHANNEL, [AGENT], "connected", true, 1_003)).toEqual([]);
+    expect(store.retainMembership(accept)).toBe(false);
+  });
+});

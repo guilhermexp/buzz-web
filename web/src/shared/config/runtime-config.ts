@@ -4,12 +4,20 @@ import { t } from "@/shared/i18n";
 export type ConfiguredAgent = {
   pubkey: string;
   name: string;
-  startable?: boolean;
+};
+
+/** Additional community preset declared by the deployment (public data only). */
+export type ConfiguredCommunity = {
+  name: string;
+  relayUrl: string;
+  addedAt: number;
 };
 
 export type RuntimeConfig = {
   communityName: string;
   relayUrl: string;
+  /** Extra communities offered in the switcher besides `relayUrl`. */
+  communities: ConfiguredCommunity[];
   agents: ConfiguredAgent[];
   agentControlUrl: string | null;
   features: RelayFeatureState;
@@ -39,7 +47,8 @@ export function normalizeRelayUrl(value: unknown): string {
 function normalizeAgentControlUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const url = new URL(value, window.location.origin);
-  const localHttp = url.protocol === "http:" && url.hostname === "localhost";
+  const localHttp =
+    url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   if (url.protocol !== "https:" && !localHttp) {
     throw new Error(t("error.agentControlUrlProtocol"));
   }
@@ -47,6 +56,26 @@ function normalizeAgentControlUrl(value: unknown): string | null {
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function parseConfiguredCommunities(value: unknown): ConfiguredCommunity[] {
+  if (!Array.isArray(value)) return [];
+  const communities: ConfiguredCommunity[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Record<string, unknown>;
+    try {
+      const relayUrl = normalizeRelayUrl(candidate.relayUrl);
+      const name =
+        typeof candidate.name === "string" && candidate.name.trim()
+          ? candidate.name.trim().slice(0, 80)
+          : new URL(relayUrl).host;
+      communities.push({ name, relayUrl, addedAt: 0 });
+    } catch {
+      // Invalid presets are ignored rather than failing the whole app.
+    }
+  }
+  return communities;
 }
 
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
@@ -66,7 +95,6 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
         .map((agent) => ({
           pubkey: String(agent.pubkey).toLowerCase(),
           name: typeof agent.name === "string" && agent.name.trim() ? agent.name.trim() : "Agent",
-          startable: agent.startable === true,
         }))
     : [];
 
@@ -76,6 +104,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
         ? raw.communityName.trim()
         : "Buzz",
     relayUrl: normalizeRelayUrl(raw.relayUrl),
+    communities: parseConfiguredCommunities(raw.communities),
     agents,
     agentControlUrl: normalizeAgentControlUrl(raw.agentControlUrl),
     features: parseRelayFeatures(raw.features),

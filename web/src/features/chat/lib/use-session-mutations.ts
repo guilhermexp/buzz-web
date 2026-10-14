@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import {
   buildMessageTags,
   fallbackProfile,
+  memberMentionCandidates,
   mergeProfileMetadata,
   messageRecipientPubkeys,
   resolveMentionPubkeys,
@@ -15,6 +16,8 @@ import type {
   UserProfile,
 } from "@/features/chat/lib/chat-types";
 import { demoEvent, eventChannelId, mergeEvents } from "@/features/chat/lib/session-events";
+import { extractMentionPubkeys } from "@/features/composer/lib/mention-bindings";
+import type { ComposerSendExtras } from "@/features/composer/lib/send-extras";
 import type { NostrEvent } from "@/shared/api/nostr-types";
 import type { BuzzRelayClient } from "@/shared/api/relay-client";
 import { t } from "@/shared/i18n";
@@ -77,6 +80,7 @@ export function useSessionMutations({
       content: string,
       attachments: AttachmentDescriptor[],
       replyTarget: ReplyTarget = null,
+      extras?: ComposerSendExtras,
     ) => {
       if (!selectedChannel || (!content.trim() && !attachments.length)) return;
       const recipients = messageRecipientPubkeys(
@@ -86,8 +90,15 @@ export function useSessionMutations({
         pubkey,
         replyTarget,
         messages,
+        extras?.mentionPubkeys,
       );
-      const tags = buildMessageTags(selectedChannel.id, recipients, attachments, replyTarget);
+      const tags = buildMessageTags(
+        selectedChannel.id,
+        recipients,
+        attachments,
+        replyTarget,
+        extras?.emojiTags,
+      );
       if (demo) {
         const event = demoEvent(
           crypto.randomUUID().replace(/-/g, ""),
@@ -200,10 +211,14 @@ export function useSessionMutations({
           ? resolveMentionPubkeys(message.content, selectedChannel.members, profiles)
           : [],
       );
+      // Like desktop, a typed name shared by several members fails the edit with a localized
+      // error instead of silently notifying nobody.
       const mentions = selectedChannel
-        ? resolveMentionPubkeys(content, selectedChannel.members, profiles).filter(
-            (mention) => !previousMentions.has(mention),
-          )
+        ? extractMentionPubkeys(
+            content,
+            new Map(),
+            memberMentionCandidates(selectedChannel.members, profiles),
+          ).filter((mention) => !previousMentions.has(mention))
         : [];
       const preservedTags = message.event.tags.filter(
         (tag) => tag[0] === "imeta" || tag[0] === "emoji",

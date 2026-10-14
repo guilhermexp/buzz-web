@@ -9,8 +9,8 @@ const DEMO_CONFIG = {
   features: { projects: true, forum: true },
   demoMode: true,
   agents: [
-    { pubkey: "a".repeat(64), name: "Codex(remote)", startable: true },
-    { pubkey: "b".repeat(64), name: "Grok(remote)", startable: true },
+    { pubkey: "a".repeat(64), name: "Codex(remote)" },
+    { pubkey: "b".repeat(64), name: "Grok(remote)" },
   ],
 };
 
@@ -154,13 +154,13 @@ test("message lifecycle, drafts, thread drafts, and profile editing survive navi
   await page.getByRole("button", { name: "Codex(remote)", exact: true }).click();
   await page.getByLabel("Send a message to Codex(remote)").fill("direct draft");
   await page.getByRole("button", { name: "general", exact: true }).click();
-  await expect(channelComposer).toHaveValue("general draft");
+  await expect(channelComposer).toHaveText("general draft");
   await page.reload();
-  await expect(channelComposer).toHaveValue("general draft");
+  await expect(channelComposer).toHaveText("general draft");
   await channelComposer.press("Enter");
-  await expect(channelComposer).toHaveValue("");
+  await expect(channelComposer).toHaveText("");
   await page.reload();
-  await expect(channelComposer).toHaveValue("");
+  await expect(channelComposer).toHaveText("");
 
   const threadRoot = page.locator("article").filter({
     hasText: "Relay is healthy. Postgres, Redis, MinIO, and Git are available.",
@@ -172,7 +172,7 @@ test("message lifecycle, drafts, thread drafts, and profile editing survive navi
   await thread.getByRole("button", { name: "Close thread" }).click();
   await threadRoot.hover();
   await threadRoot.getByRole("button", { name: "Reply in thread" }).click();
-  await expect(thread.getByLabel("Reply to thread")).toHaveValue("thread draft");
+  await expect(thread.getByLabel("Reply to thread")).toHaveText("thread draft");
   await thread.getByRole("button", { name: "Close thread" }).click();
 
   const ownMessage = page.locator("article").filter({

@@ -6,8 +6,20 @@
 }
 
 :3000 {
+	@agentcontrol path /app/api/agent-control /app/api/agent-control/*
 	@app path /app /app/*
 	@pairing path /pair
+
+	# Optional Agent Control (agent-control/README.md). It listens on host loopback under the
+	# rootless-Docker user; set PUBLIC_BASE_URL=https://<host>/app/api/agent-control so the
+	# stripped path plus query the service sees is exactly what the browser signed. WebSocket
+	# upgrades (terminals) pass through reverse_proxy unchanged.
+	handle @agentcontrol {
+		uri strip_prefix /app/api/agent-control
+		reverse_proxy {$BUZZ_AGENT_CONTROL_UPSTREAM:host.docker.internal:8095} {
+			header_up Host {http.request.host}
+		}
+	}
 
 	handle @app {
 		reverse_proxy {$BUZZ_WEB_UPSTREAM:host.docker.internal:3001} {

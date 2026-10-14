@@ -90,6 +90,7 @@ export const mockRepoCommits: CommitInfo[] = [
   {
     oid: "a".repeat(40),
     message: "Polish repository browsing styles",
+    parents: ["b".repeat(40)],
     author: {
       name: "Ada",
       email: "ada@example.com",
@@ -99,6 +100,7 @@ export const mockRepoCommits: CommitInfo[] = [
   {
     oid: "b".repeat(40),
     message: "Add repository empty states",
+    parents: [],
     author: {
       name: "Grace",
       email: "grace@example.com",

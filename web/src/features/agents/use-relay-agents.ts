@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { startRelayAgent } from "@/features/agents/agent-control-client";
 import { type RelayAgent, relayAgentsFromEvents } from "@/features/agents/lib/relay-agents";
-import type { BuzzChannel, UserProfile } from "@/features/chat/lib/chat-types";
+import type { ManagedAgentsApi } from "@/features/agents/use-managed-agents";
+import { useWorkspace } from "@/features/chat/lib/workspace-context";
 import type { NostrEvent } from "@/shared/api/nostr-types";
-import type { BuzzRelayClient } from "@/shared/api/relay-client";
-import type { ConfiguredAgent } from "@/shared/config/runtime-config";
 import { t } from "@/shared/i18n";
 
 function mergeEvents(current: NostrEvent[], incoming: NostrEvent[]): NostrEvent[] {
@@ -13,48 +11,73 @@ function mergeEvents(current: NostrEvent[], incoming: NostrEvent[]): NostrEvent[
   return [...byId.values()];
 }
 
-export function useRelayAgents({
-  client,
-  demo,
-  agentControlUrl,
-  configuredAgents,
-  channels,
-  profiles,
-  presence,
-  ensureProfiles,
-  refreshChannels,
-}: {
-  client: BuzzRelayClient | null;
-  demo: boolean;
-  agentControlUrl: string | null;
-  configuredAgents: readonly ConfiguredAgent[];
-  channels: readonly BuzzChannel[];
-  profiles: Readonly<Record<string, UserProfile>>;
-  presence: Readonly<Record<string, RelayAgent["status"]>>;
-  ensureProfiles: (pubkeys: string[]) => Promise<void>;
-  refreshChannels: () => Promise<void>;
-}) {
+export type RelayAgentsState = {
+  agents: RelayAgent[];
+  loading: boolean;
+  error: string | null;
+  pendingAction: string | null;
+  refresh: () => Promise<void>;
+  /**
+   * Add (9000, role bot) or remove (9001) the agent; the relay enforces channel_add_policy.
+   * Resolves to whether the relay accepted the change (failures are surfaced in `error`).
+   */
+  setAgentChannel: (
+    agentPubkey: string,
+    channelId: string,
+    shouldJoin: boolean,
+  ) => Promise<boolean>;
+};
+
+/** Relay-discovered agents (10100 + kind 0 + bot membership) merged with managed agents. */
+export function useRelayAgents(managed: ManagedAgentsApi): RelayAgentsState {
+  const { client, demo, config, channels, profiles, presence, ensureProfiles, refreshChannels } =
+    useWorkspace();
   const [events, setEvents] = useState<NostrEvent[]>([]);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [startingPubkey, setStartingPubkey] = useState<string | null>(null);
   const [demoChannelOverrides, setDemoChannelOverrides] = useState<Record<string, string[]>>({});
+  const candidateKey = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...config.agents.map((agent) => agent.pubkey),
+          ...managed.agents.map((agent) => agent.pubkey),
+          ...channels.flatMap((channel) =>
+            channel.members
+              .filter((member) => member.role === "bot")
+              .map((member) => member.pubkey.toLowerCase()),
+          ),
+        ]),
+      ]
+        .sort()
+        .join(","),
+    [channels, config.agents, managed.agents],
+  );
 
   const refresh = useCallback(async () => {
     if (!client || demo) return;
     setLoading(true);
     try {
-      const nextEvents = await client.query({ kinds: [10100], limit: 500 });
-      setEvents(nextEvents);
-      await ensureProfiles(nextEvents.map((event) => event.pubkey));
+      const agentProfiles = await client.query({ kinds: [10100], limit: 500 });
+      const authors = [
+        ...new Set([
+          ...agentProfiles.map((event) => event.pubkey.toLowerCase()),
+          ...(candidateKey ? candidateKey.split(",") : []),
+        ]),
+      ];
+      const metadata = authors.length
+        ? await client.query({ kinds: [0], authors, limit: authors.length * 2 })
+        : [];
+      setEvents([...agentProfiles, ...metadata]);
+      await ensureProfiles(authors);
       setError(null);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : t("error.agentsLoad"));
     } finally {
       setLoading(false);
     }
-  }, [client, demo, ensureProfiles]);
+  }, [candidateKey, client, demo, ensureProfiles]);
 
   useEffect(() => {
     if (!client || demo) return;
@@ -88,12 +111,13 @@ export function useRelayAgents({
     () =>
       relayAgentsFromEvents({
         events,
-        configuredAgents,
+        configuredAgents: config.agents,
+        managedAgents: managed.agents,
         channels,
         profiles,
         presence,
       }),
-    [channels, configuredAgents, events, presence, profiles],
+    [channels, config.agents, events, managed.agents, presence, profiles],
   );
   const agents = useMemo(
     () =>
@@ -105,21 +129,19 @@ export function useRelayAgents({
   );
 
   const setAgentChannel = useCallback(
-    async (agentPubkey: string, channelId: string, shouldJoin: boolean) => {
-      const actionKey = `${agentPubkey}:${channelId}`;
-      setPendingAction(actionKey);
+    async (agentPubkey: string, channelId: string, shouldJoin: boolean): Promise<boolean> => {
+      setPendingAction(`${agentPubkey}:${channelId}`);
       setError(null);
       try {
         if (demo) {
-          const currentAgent = agents.find((agent) => agent.pubkey === agentPubkey);
-          const currentIds = currentAgent?.channelIds ?? [];
+          const currentIds = agents.find((agent) => agent.pubkey === agentPubkey)?.channelIds ?? [];
           setDemoChannelOverrides((current) => ({
             ...current,
             [agentPubkey]: shouldJoin
               ? [...new Set([...currentIds, channelId])]
               : currentIds.filter((id) => id !== channelId),
           }));
-          return;
+          return true;
         }
         if (!client) throw new Error(t("error.relayClient"));
         await client.publish({
@@ -132,44 +154,16 @@ export function useRelayAgents({
           ],
         });
         await refreshChannels();
-        await refresh();
+        return true;
       } catch (actionError) {
         setError(actionError instanceof Error ? actionError.message : t("error.agentUpdate"));
+        return false;
       } finally {
         setPendingAction(null);
       }
     },
-    [agents, client, demo, refresh, refreshChannels],
+    [agents, client, demo, refreshChannels],
   );
 
-  const startAgent = useCallback(
-    async (agentPubkey: string) => {
-      const agent = agents.find((candidate) => candidate.pubkey === agentPubkey);
-      if (!agentControlUrl || !agent?.startable) {
-        setError(t("error.agentStartUnavailable"));
-        return;
-      }
-      setStartingPubkey(agentPubkey);
-      setError(null);
-      try {
-        await startRelayAgent(agentControlUrl, agentPubkey);
-      } catch (startError) {
-        setError(startError instanceof Error ? startError.message : t("error.agentStart"));
-      } finally {
-        setStartingPubkey(null);
-      }
-    },
-    [agentControlUrl, agents],
-  );
-
-  return {
-    agents,
-    loading,
-    error,
-    pendingAction,
-    startingPubkey,
-    refresh,
-    setAgentChannel,
-    startAgent,
-  };
+  return { agents, loading, error, pendingAction, refresh, setAgentChannel };
 }

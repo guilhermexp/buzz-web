@@ -6,6 +6,24 @@ export const INBOX_EVENT_KINDS = [1, 9, 40002, 45001, 45003, 46010, 46011, 46012
 
 export type InboxCategory = "mention" | "dm" | "thread" | "needs_action";
 
+/** Desktop-aligned Inbox groups, in display order. */
+export const INBOX_GROUPS: readonly InboxCategory[] = ["needs_action", "mention", "thread", "dm"];
+
+export type ApprovalResolution = "granted" | "denied" | "expired";
+
+/** Workflow approval request (kind 46010, relay-signed) fields shown in the Inbox. */
+export type ApprovalRequest = {
+  reference: string;
+  workflowId: string | null;
+  runId: string | null;
+  stepId: string | null;
+  summary: string | null;
+  approver: string | null;
+  expiresAt: number | null;
+  /** Outcome the Relay published (kind 46011/46012), if observed. */
+  resolution: ApprovalResolution | null;
+};
+
 export type InboxItem = {
   id: string;
   event: NostrEvent;
@@ -13,7 +31,59 @@ export type InboxItem = {
   channelId: string | null;
   threadRootId: string | null;
   unread: boolean;
+  approval: ApprovalRequest | null;
 };
+
+function stringField(value: Record<string, unknown>, key: string): string | null {
+  const field = value[key];
+  return typeof field === "string" && field.trim() ? field.trim() : null;
+}
+
+export function parseApprovalRequest(
+  event: NostrEvent,
+  resolution: ApprovalResolution | null,
+): ApprovalRequest | null {
+  const reference = tagValue(event, "d");
+  if (event.kind !== 46010 || !reference || !/^[0-9a-f]{64}$/i.test(reference)) return null;
+  let content: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(event.content) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      content = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Unstructured content keeps the reference only.
+  }
+  const expires = content.expires_at;
+  return {
+    reference: reference.toLowerCase(),
+    workflowId: stringField(content, "workflow_id"),
+    runId: stringField(content, "run_id"),
+    stepId: stringField(content, "step_id"),
+    summary: stringField(content, "summary"),
+    approver: stringField(content, "approver"),
+    expiresAt: typeof expires === "number" && Number.isFinite(expires) ? expires : null,
+    resolution,
+  };
+}
+
+function approvalResolutions(events: Iterable<NostrEvent>): Map<string, ApprovalResolution> {
+  const resolutions = new Map<string, ApprovalResolution>();
+  for (const event of events) {
+    if (event.kind !== 46011 && event.kind !== 46012) continue;
+    const reference = tagValue(event, "d")?.toLowerCase();
+    if (!reference) continue;
+    resolutions.set(
+      reference,
+      event.kind === 46011
+        ? "granted"
+        : tagValue(event, "status") === "expired"
+          ? "expired"
+          : "denied",
+    );
+  }
+  return resolutions;
+}
 
 function replyEventId(event: NostrEvent): string | null {
   return event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] ?? null;
@@ -94,11 +164,14 @@ export function buildInboxItems({
   channels,
   currentPubkey,
   readIds,
+  keepApprovalIds = new Set(),
 }: {
   events: readonly NostrEvent[];
   channels: readonly BuzzChannel[];
   currentPubkey: string;
   readIds: ReadonlySet<string>;
+  /** Approvals this session decided stay visible after resolution to show the outcome. */
+  keepApprovalIds?: ReadonlySet<string>;
 }): InboxItem[] {
   const current = currentPubkey.toLowerCase();
   const channelsById = new Map(channels.map((channel) => [channel.id, channel]));
@@ -108,19 +181,18 @@ export function buildInboxItems({
   const unique = new Map(events.map((event) => [event.id, event]));
   const rootsByEvent = threadRootIds([...unique.values()]);
   const notificationRoots = threadNotificationRootIds([...unique.values()], current, rootsByEvent);
-  const resolvedApprovals = new Set(
-    [...unique.values()]
-      .filter((event) => event.kind === 46011 || event.kind === 46012)
-      .map((event) => tagValue(event, "d"))
-      .filter((value): value is string => Boolean(value)),
-  );
+  const resolutions = approvalResolutions(unique.values());
 
   return [...unique.values()]
     .filter(
       (event) =>
         INBOX_EVENT_KINDS.includes(event.kind) &&
         event.pubkey.toLowerCase() !== current &&
-        !(event.kind === 46010 && resolvedApprovals.has(tagValue(event, "d") ?? "")),
+        !(
+          event.kind === 46010 &&
+          resolutions.has(tagValue(event, "d")?.toLowerCase() ?? "") &&
+          !keepApprovalIds.has(event.id)
+        ),
     )
     .map((event): InboxItem | null => {
       const channelId = tagValue(event, "h");
@@ -148,6 +220,13 @@ export function buildInboxItems({
         channelId,
         threadRootId,
         unread: !readIds.has(event.id),
+        approval:
+          event.kind === 46010
+            ? parseApprovalRequest(
+                event,
+                resolutions.get(tagValue(event, "d")?.toLowerCase() ?? "") ?? null,
+              )
+            : null,
       };
     })
     .filter((item): item is InboxItem => item !== null)

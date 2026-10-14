@@ -176,6 +176,37 @@ describe("BuzzRelayClient authentication reconnects", () => {
   });
 });
 
+describe("BuzzRelayClient network changes", () => {
+  it("drops an open socket when the browser goes offline and reconnects when online", async () => {
+    const network = new EventTarget();
+    vi.stubGlobal("addEventListener", network.addEventListener.bind(network));
+    vi.stubGlobal("removeEventListener", network.removeEventListener.bind(network));
+    const client = new BuzzRelayClient("wss://relay.example");
+    const first = await connectClient(client);
+    expect(client.connectionState).toBe("connected");
+
+    network.dispatchEvent(new Event("offline"));
+    expect(first.readyState).toBe(3);
+    expect(client.connectionState).toBe("reconnecting");
+
+    network.dispatchEvent(new Event("online"));
+    const replacement = sockets[sockets.length - 1];
+    expect(replacement).not.toBe(first);
+    replacement.open();
+    replacement.receive(["AUTH", "after-online"]);
+    const request = signRequests[signRequests.length - 1];
+    request.resolve(signedEvent(request.template, "e".repeat(64)));
+    await settleAsyncHandler();
+    replacement.receive(["OK", "e".repeat(64), true, ""]);
+    await settleAsyncHandler();
+    expect(client.connectionState).toBe("connected");
+
+    client.disconnect();
+    network.dispatchEvent(new Event("online"));
+    expect(sockets[sockets.length - 1]).toBe(replacement);
+  });
+});
+
 describe("BuzzRelayClient rate limits", () => {
   it("retries a rate-limited query after the Relay delay", async () => {
     const client = new BuzzRelayClient("wss://relay.example");
@@ -299,5 +330,30 @@ describe("BuzzRelayClient rate limits", () => {
 
     await expect(query).rejects.toThrow("error: invalid filter");
     client.disconnect();
+  });
+});
+
+describe("BuzzRelayClient disposal", () => {
+  it("never reopens a socket after the owning workspace disposes it", async () => {
+    const client = new BuzzRelayClient("wss://relay.example");
+    const socket = await connectClient(client);
+    client.dispose();
+    expect(socket.readyState).toBe(3);
+
+    // Late work from an unmounted workspace (queries, publishes, subscriptions)
+    // must fail instead of silently reconnecting, unlike after disconnect().
+    await expect(client.query({ kinds: [1] })).rejects.toThrow();
+    await expect(client.subscribe({ kinds: [1] }, () => undefined)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("still reconnects on demand after a plain disconnect", async () => {
+    const client = new BuzzRelayClient("wss://relay.example");
+    await connectClient(client);
+    client.disconnect();
+    void client.query({ kinds: [1] }).catch(() => undefined);
+    expect(sockets).toHaveLength(2);
+    client.dispose();
   });
 });

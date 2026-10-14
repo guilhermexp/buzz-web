@@ -1,4 +1,4 @@
-import { GitCommit } from "lucide-react";
+import { GitCommit, GitMerge } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { relativeTime } from "@/shared/lib/relative-time";
 import type { CommitInfo } from "../git-client";
@@ -7,7 +7,11 @@ function CommitRow({ commit }: { commit: CommitInfo }) {
   const firstLine = commit.message.split("\n")[0];
   return (
     <div className="flex items-start gap-3 border-b border-black/10 px-3 py-2.5 text-sm text-black last:border-b-0 dark:border-white/10 dark:text-white">
-      <GitCommit className="mt-0.5 h-4 w-4 shrink-0 text-black/50 dark:text-white/50" />
+      {commit.parents.length > 1 ? (
+        <GitMerge className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
+      ) : (
+        <GitCommit className="mt-0.5 h-4 w-4 shrink-0 text-black/50 dark:text-white/50" />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{firstLine}</p>
         <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
@@ -16,6 +20,13 @@ function CommitRow({ commit }: { commit: CommitInfo }) {
             time: relativeTime(commit.author.timestamp),
           })}
         </p>
+        {commit.parents.length > 1 ? (
+          <p className="mt-0.5 font-mono text-[11px] text-black/50 dark:text-white/50">
+            {t("projects.commit.mergeParents", {
+              parents: commit.parents.map((parent) => parent.slice(0, 7)).join(" + "),
+            })}
+          </p>
+        ) : null}
       </div>
       <code className="shrink-0 self-center rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-black/50 dark:bg-white/10 dark:text-white/50">
         {commit.oid.slice(0, 7)}
